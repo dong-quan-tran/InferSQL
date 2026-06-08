@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual env
+.venv/
+venv/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# Env
+.env
+
+# Data artifacts
+data/raw/*.csv
+data/processed/*.csv
+mlruns/
+mlflow.db
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
