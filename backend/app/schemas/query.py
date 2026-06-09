@@ -19,6 +19,12 @@ class QueryValidationResponse(BaseModel):
     is_valid: bool
     query_type: str
     errors: list[str]
+    tables: list[str]
+    columns: list[str]
+    has_where: bool
+    has_group_by: bool
+    has_order_by: bool
+    has_limit: bool
 
 
 class QueryPlanResponse(BaseModel):

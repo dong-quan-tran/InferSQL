@@ -8,3 +8,7 @@ class EmptyQueryError(QueryPlanningError):
 
 class UnsupportedQueryError(QueryPlanningError):
     pass
+
+
+class QueryParseError(QueryPlanningError):
+    pass

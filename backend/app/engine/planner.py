@@ -10,7 +10,8 @@ class QueryPlannerService:
         return self.validator.normalize_sql(sql)
 
     def detect_query_type(self, sql: str) -> str:
-        return self.validator.detect_query_type(sql)
+        validation = self.validator.validate(sql)
+        return validation["query_type"]
 
     def validate(self, sql: str) -> dict:
         return self.validator.validate(sql)
@@ -26,6 +27,7 @@ class QueryPlannerService:
             "normalized_sql": validation["normalized_sql"],
             "steps": [
                 "parse_sql",
+                "extract_query_metadata",
                 "validate_sql",
                 "build_logical_plan",
                 "build_physical_plan",

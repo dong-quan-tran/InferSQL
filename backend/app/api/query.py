@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.engine.errors import EmptyQueryError, UnsupportedQueryError
+from app.engine.errors import EmptyQueryError, QueryParseError, UnsupportedQueryError
 from app.engine.interfaces import QueryPlanner
 from app.engine.service import get_query_planner
 from app.schemas.query import (
@@ -28,6 +28,11 @@ def validate_query(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
+    except QueryParseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
 
     return QueryValidationResponse(**result)
 
@@ -40,6 +45,11 @@ def plan_query(
     try:
         result = planner.plan(payload.sql)
     except EmptyQueryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except QueryParseError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
