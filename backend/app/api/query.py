@@ -2,9 +2,26 @@ from fastapi import APIRouter, HTTPException, status
 
 from app.engine.errors import EmptyQueryError, UnsupportedQueryError
 from app.engine.service import planner_service
-from app.schemas.query import QueryPlanRequest, QueryPlanResponse
+from app.schemas.query import (
+    QueryPlanRequest,
+    QueryPlanResponse,
+    QueryValidationResponse,
+)
 
 router = APIRouter(tags=["query"])
+
+
+@router.post("/query/validate", response_model=QueryValidationResponse)
+def validate_query(payload: QueryPlanRequest) -> QueryValidationResponse:
+    try:
+        result = planner_service.validate(payload.sql)
+    except EmptyQueryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    return QueryValidationResponse(**result)
 
 
 @router.post("/query/plan", response_model=QueryPlanResponse)

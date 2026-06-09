@@ -13,6 +13,14 @@ class QueryPlanRequest(BaseModel):
         return cleaned
 
 
+class QueryValidationResponse(BaseModel):
+    sql: str
+    normalized_sql: str
+    is_valid: bool
+    query_type: str
+    errors: list[str]
+
+
 class QueryPlanResponse(BaseModel):
     sql: str
     normalized_sql: str
