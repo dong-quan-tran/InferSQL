@@ -1,0 +1,2 @@
+[console_scripts]
+bastionquant = bastionquant.cli:main

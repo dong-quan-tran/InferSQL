@@ -1,0 +1,1 @@
+Write-Host "Bootstrap script placeholder for InferSQL"
