@@ -1,5 +1,4 @@
 from sqlglot import exp, parse_one
-from sqlglot.errors import ParseError
 
 
 class QueryParser:
@@ -28,6 +27,51 @@ class QueryParser:
             "has_limit": has_limit,
         }
 
-    def is_select(self, sql: str) -> bool:
+    def build_logical_plan(self, sql: str) -> dict:
         expression = self.parse(sql)
-        return isinstance(expression, exp.Select)
+
+        table = next(expression.find_all(exp.Table), None)
+        if table is None:
+            raise ValueError("Query must reference a table")
+
+        select_expressions = expression.expressions or []
+        projected_columns = [expr.sql() for expr in select_expressions] or ["*"]
+
+        current_node = {
+            "node_type": "Scan",
+            "details": {
+                "table": table.sql(),
+            },
+            "children": [],
+        }
+
+        where_clause = expression.args.get("where")
+        if where_clause is not None:
+            current_node = {
+                "node_type": "Filter",
+                "details": {
+                    "predicate": where_clause.this.sql(),
+                },
+                "children": [current_node],
+            }
+
+        current_node = {
+            "node_type": "Project",
+            "details": {
+                "columns": projected_columns,
+            },
+            "children": [current_node],
+        }
+
+        limit_clause = expression.args.get("limit")
+        if limit_clause is not None and limit_clause.expression is not None:
+            limit_value = int(limit_clause.expression.name)
+            current_node = {
+                "node_type": "Limit",
+                "details": {
+                    "count": limit_value,
+                },
+                "children": [current_node],
+            }
+
+        return current_node

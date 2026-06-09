@@ -22,6 +22,8 @@ class QueryPlannerService:
         if not validation["is_valid"]:
             raise UnsupportedQueryError(validation["errors"][0])
 
+        logical_plan = self.validator.parser.build_logical_plan(validation["normalized_sql"])
+
         return {
             "sql": sql,
             "normalized_sql": validation["normalized_sql"],
@@ -33,4 +35,5 @@ class QueryPlannerService:
                 "build_physical_plan",
             ],
             "engine": "infersql-planner",
+            "logical_plan": logical_plan,
         }

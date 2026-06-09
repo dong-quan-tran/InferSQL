@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -27,8 +29,18 @@ class QueryValidationResponse(BaseModel):
     has_limit: bool
 
 
+class LogicalPlanNode(BaseModel):
+    node_type: Literal["Scan", "Filter", "Project", "Limit"]
+    details: dict[str, str | list[str] | int]
+    children: list["LogicalPlanNode"] = []
+
+
 class QueryPlanResponse(BaseModel):
     sql: str
     normalized_sql: str
     steps: list[str]
     engine: str
+    logical_plan: LogicalPlanNode
+
+
+LogicalPlanNode.model_rebuild()
