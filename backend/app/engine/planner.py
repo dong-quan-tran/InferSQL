@@ -1,39 +1,22 @@
-from app.engine.errors import EmptyQueryError, UnsupportedQueryError
+from app.engine.errors import UnsupportedQueryError
+from app.engine.validator import QueryValidator
 
 
 class QueryPlannerService:
+    def __init__(self, validator: QueryValidator) -> None:
+        self.validator = validator
+
     def normalize_sql(self, sql: str) -> str:
-        return " ".join(sql.strip().split())
+        return self.validator.normalize_sql(sql)
 
     def detect_query_type(self, sql: str) -> str:
-        normalized_sql = self.normalize_sql(sql)
-        if not normalized_sql:
-            return "unknown"
-
-        return normalized_sql.split(" ", 1)[0].upper()
+        return self.validator.detect_query_type(sql)
 
     def validate(self, sql: str) -> dict:
-        normalized_sql = self.normalize_sql(sql)
-
-        if not normalized_sql:
-            raise EmptyQueryError("SQL must not be empty")
-
-        query_type = self.detect_query_type(normalized_sql)
-        errors: list[str] = []
-
-        if query_type != "SELECT":
-            errors.append("Only SELECT queries are supported right now")
-
-        return {
-            "sql": sql,
-            "normalized_sql": normalized_sql,
-            "is_valid": len(errors) == 0,
-            "query_type": query_type,
-            "errors": errors,
-        }
+        return self.validator.validate(sql)
 
     def plan(self, sql: str) -> dict:
-        validation = self.validate(sql)
+        validation = self.validator.validate(sql)
 
         if not validation["is_valid"]:
             raise UnsupportedQueryError(validation["errors"][0])
@@ -49,6 +32,3 @@ class QueryPlannerService:
             ],
             "engine": "infersql-planner",
         }
-
-
-planner_service = QueryPlannerService()
