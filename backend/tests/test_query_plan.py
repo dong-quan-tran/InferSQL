@@ -25,6 +25,42 @@ def test_query_plan_returns_expected_shape() -> None:
         "build_physical_plan",
     ]
 
+    logical_plan = data["logical_plan"]
+    assert logical_plan["node_type"] == "Limit"
+    assert logical_plan["details"] == {"count": 10}
+
+    project_node = logical_plan["children"][0]
+    assert project_node["node_type"] == "Project"
+    assert project_node["details"] == {"columns": ["symbol", "close"]}
+
+    scan_node = project_node["children"][0]
+    assert scan_node["node_type"] == "Scan"
+    assert scan_node["details"] == {"table": "prices"}
+
+
+def test_query_plan_includes_filter_node_when_where_exists() -> None:
+    response = client.post(
+        "/query/plan",
+        json={"sql": "SELECT symbol FROM prices WHERE close > 100 LIMIT 5"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    logical_plan = data["logical_plan"]
+
+    assert logical_plan["node_type"] == "Limit"
+    project_node = logical_plan["children"][0]
+    assert project_node["node_type"] == "Project"
+
+    filter_node = project_node["children"][0]
+    assert filter_node["node_type"] == "Filter"
+    assert filter_node["details"] == {"predicate": "close > 100"}
+
+    scan_node = filter_node["children"][0]
+    assert scan_node["node_type"] == "Scan"
+    assert scan_node["details"] == {"table": "prices"}
+
 
 def test_query_plan_normalizes_whitespace() -> None:
     response = client.post(
