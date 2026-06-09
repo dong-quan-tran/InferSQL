@@ -19,6 +19,7 @@ def test_query_plan_returns_expected_shape() -> None:
     assert data["engine"] == "infersql-planner"
     assert data["steps"] == [
         "parse_sql",
+        "extract_query_metadata",
         "validate_sql",
         "build_logical_plan",
         "build_physical_plan",
@@ -57,3 +58,9 @@ def test_query_plan_rejects_non_select_sql() -> None:
     assert response.json() == {
         "detail": "Only SELECT queries are supported right now",
     }
+
+
+def test_query_plan_rejects_invalid_sql_syntax() -> None:
+    response = client.post("/query/plan", json={"sql": "SELECT FROM"})
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Invalid SQL syntax"}

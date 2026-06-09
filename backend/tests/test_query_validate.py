@@ -18,6 +18,12 @@ def test_query_validate_accepts_select_sql() -> None:
         "is_valid": True,
         "query_type": "SELECT",
         "errors": [],
+        "tables": ["prices"],
+        "columns": ["close", "symbol"],
+        "has_where": False,
+        "has_group_by": False,
+        "has_order_by": False,
+        "has_limit": True,
     }
 
 
@@ -31,6 +37,7 @@ def test_query_validate_normalizes_whitespace() -> None:
     data = response.json()
     assert data["normalized_sql"] == "SELECT symbol, close FROM prices LIMIT 10"
     assert data["is_valid"] is True
+    assert data["tables"] == ["prices"]
 
 
 def test_query_validate_reports_unsupported_query() -> None:
@@ -46,9 +53,21 @@ def test_query_validate_reports_unsupported_query() -> None:
         "is_valid": False,
         "query_type": "DELETE",
         "errors": ["Only SELECT queries are supported right now"],
+        "tables": ["prices"],
+        "columns": ["symbol"],
+        "has_where": True,
+        "has_group_by": False,
+        "has_order_by": False,
+        "has_limit": False,
     }
 
 
 def test_query_validate_rejects_blank_sql() -> None:
     response = client.post("/query/validate", json={"sql": "   "})
     assert response.status_code == 422
+
+
+def test_query_validate_rejects_invalid_sql_syntax() -> None:
+    response = client.post("/query/validate", json={"sql": "SELECT FROM"})
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Invalid SQL syntax"}
