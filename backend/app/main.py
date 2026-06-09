@@ -1,11 +1,18 @@
 from fastapi import FastAPI
 
 from app.api.routes import router
-
-app = FastAPI(title="SQL API", version="0.1.0")
-app.include_router(router)
+from app.core.config import get_settings
 
 
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def create_app() -> FastAPI:
+    settings = get_settings()
+
+    app = FastAPI(
+        title=settings.app_name,
+        version=settings.app_version,
+    )
+    app.include_router(router)
+    return app
+
+
+app = create_app()

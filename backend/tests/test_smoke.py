@@ -11,7 +11,15 @@ def test_health() -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_root() -> None:
-    response = client.get("/")
+def test_version() -> None:
+    response = client.get("/version")
     assert response.status_code == 200
-    assert response.json() == {"message": "InferSQL backend is running"}
+    assert response.json() == {
+        "service": "infersql-backend",
+        "version": "0.1.0",
+    }
+
+
+def test_unknown_route() -> None:
+    response = client.get("/does-not-exist")
+    assert response.status_code == 404
