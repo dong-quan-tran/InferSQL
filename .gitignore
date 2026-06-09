@@ -75,7 +75,7 @@ data/tmp/
 data/cache/
 # If you want processed data under version control, keep this as-is.
 # If not, you can add:
-# data/processed/
+data/processed/
 
 
 # Jupyter
