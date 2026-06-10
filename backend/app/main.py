@@ -1,3 +1,4 @@
+# app/main.py
 from __future__ import annotations
 
 import time
@@ -7,7 +8,7 @@ from fastapi import FastAPI, Request
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 from app.api import router as api_router
-from app.core.observability import query_duration_histogram
+from app.core.observability import http_request_duration_histogram
 
 app = FastAPI(title="InferSQL API")
 app.include_router(api_router)
@@ -27,11 +28,11 @@ async def add_request_context(request: Request, call_next):
     response.headers["X-Request-Id"] = request_id
     response.headers["X-Process-Time-Ms"] = f"{duration_ms:.3f}"
 
-    query_duration_histogram.record(
+    http_request_duration_histogram.record(
         duration_ms,
         attributes={
             "http.method": request.method,
-            "http.route": request.url.path,
+            "http.target": request.url.path,
         },
     )
     return response

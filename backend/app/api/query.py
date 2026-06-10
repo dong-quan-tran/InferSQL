@@ -31,6 +31,7 @@ router = APIRouter()
 dataset_registry = DatasetRegistry()
 physical_planner = PhysicalPlanner()
 query_parser = QueryParser()
+query_executor = QueryExecutor(dataset_registry)
 
 
 def normalize_sql(sql: str) -> str:
@@ -51,6 +52,15 @@ def _record_phase_duration(endpoint: str, phase: str, duration_ms: float) -> Non
             "phase": phase,
         },
     )
+
+
+def _record_total_duration(endpoint: str, request_start: float) -> float:
+    total_duration_ms = (perf_counter() - request_start) * 1000
+    query_duration_histogram.record(
+        total_duration_ms,
+        attributes={"endpoint": endpoint},
+    )
+    return total_duration_ms
 
 
 def seed_demo_data() -> None:
@@ -91,11 +101,7 @@ def validate_query(payload: QueryRequest, request: Request) -> QueryValidationRe
             is_valid = summary["query_type"] == "SELECT"
             errors = [] if is_valid else ["Only SELECT queries are supported right now"]
 
-            total_duration_ms = (perf_counter() - request_start) * 1000
-            query_duration_histogram.record(
-                total_duration_ms,
-                attributes={"endpoint": endpoint},
-            )
+            total_duration_ms = _record_total_duration(endpoint, request_start)
 
             span.set_attribute("query.normalized_sql", normalized_sql)
             span.set_attribute("query.type", summary["query_type"])
@@ -118,6 +124,12 @@ def validate_query(payload: QueryRequest, request: Request) -> QueryValidationRe
                         "query.type": summary["query_type"],
                     },
                 )
+                span.set_status(
+                    Status(
+                        StatusCode.ERROR,
+                        "Only SELECT queries are supported right now",
+                    )
+                )
 
             return QueryValidationResponse(
                 sql=payload.sql,
@@ -133,6 +145,8 @@ def validate_query(payload: QueryRequest, request: Request) -> QueryValidationRe
                 has_limit=summary["has_limit"],
             )
         except ValueError as exc:
+            total_duration_ms = _record_total_duration(endpoint, request_start)
+            span.set_attribute("timing.total_ms", round(total_duration_ms, 3))
             query_failure_counter.add(
                 1,
                 attributes={"endpoint": endpoint, "error.type": "value_error"},
@@ -167,17 +181,13 @@ def plan_query(payload: QueryRequest, request: Request) -> QueryPlanResponse:
             _record_phase_duration(endpoint, "plan", plan_duration_ms)
 
             normalized_sql = normalize_sql(payload.sql)
-            total_duration_ms = (perf_counter() - request_start) * 1000
-            query_duration_histogram.record(
-                total_duration_ms,
-                attributes={"endpoint": endpoint},
-            )
+            total_duration_ms = _record_total_duration(endpoint, request_start)
 
             span.set_attribute("query.normalized_sql", normalized_sql)
             span.set_attribute("plan.engine", "infersql-planner")
             span.set_attribute("plan.step_count", 5)
-            span.set_attribute("plan.logical_root", logical_plan.node_type)
-            span.set_attribute("plan.physical_root", physical_plan.node_type)
+            span.set_attribute("plan.logical_root", str(logical_plan.node_type))
+            span.set_attribute("plan.physical_root", str(physical_plan.node_type))
             span.set_attribute("timing.parse_ms", round(parse_duration_ms, 3))
             span.set_attribute("timing.plan_ms", round(plan_duration_ms, 3))
             span.set_attribute("timing.total_ms", round(total_duration_ms, 3))
@@ -197,6 +207,8 @@ def plan_query(payload: QueryRequest, request: Request) -> QueryPlanResponse:
                 physical_plan=physical_plan,
             )
         except ValueError as exc:
+            total_duration_ms = _record_total_duration(endpoint, request_start)
+            span.set_attribute("timing.total_ms", round(total_duration_ms, 3))
             query_failure_counter.add(
                 1,
                 attributes={"endpoint": endpoint, "error.type": "value_error"},
@@ -232,18 +244,13 @@ def execute_query(payload: QueryRequest, request: Request) -> QueryExecuteRespon
 
             execute_start = perf_counter()
             with tracer.start_as_current_span("query.run"):
-                executor = QueryExecutor(dataset_registry)
-                result_table = executor.execute(physical_plan)
+                result_table = query_executor.execute(physical_plan)
             execute_duration_ms = (perf_counter() - execute_start) * 1000
             _record_phase_duration(endpoint, "execute", execute_duration_ms)
 
             normalized_sql = normalize_sql(payload.sql)
-            total_duration_ms = (perf_counter() - request_start) * 1000
+            total_duration_ms = _record_total_duration(endpoint, request_start)
 
-            query_duration_histogram.record(
-                total_duration_ms,
-                attributes={"endpoint": endpoint},
-            )
             query_rows_histogram.record(
                 result_table.num_rows,
                 attributes={"endpoint": endpoint},
@@ -267,6 +274,8 @@ def execute_query(payload: QueryRequest, request: Request) -> QueryExecuteRespon
                 physical_plan=physical_plan,
             )
         except DatasetNotFoundError as exc:
+            total_duration_ms = _record_total_duration(endpoint, request_start)
+            span.set_attribute("timing.total_ms", round(total_duration_ms, 3))
             query_failure_counter.add(
                 1,
                 attributes={"endpoint": endpoint, "error.type": "dataset_not_found"},
@@ -275,6 +284,8 @@ def execute_query(payload: QueryRequest, request: Request) -> QueryExecuteRespon
             span.set_status(Status(StatusCode.ERROR, str(exc)))
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:
+            total_duration_ms = _record_total_duration(endpoint, request_start)
+            span.set_attribute("timing.total_ms", round(total_duration_ms, 3))
             query_failure_counter.add(
                 1,
                 attributes={"endpoint": endpoint, "error.type": "value_error"},

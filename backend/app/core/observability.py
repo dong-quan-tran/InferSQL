@@ -21,6 +21,12 @@ metrics.set_meter_provider(_meter_provider)
 tracer = trace.get_tracer(SERVICE_NAME)
 meter = metrics.get_meter(SERVICE_NAME)
 
+http_request_duration_histogram = meter.create_histogram(
+    "infersql.http.request.duration.ms",
+    description="End-to-end HTTP request duration in milliseconds",
+    unit="ms",
+)
+
 query_counter = meter.create_counter(
     "infersql.query.requests",
     description="Count of query API requests",
