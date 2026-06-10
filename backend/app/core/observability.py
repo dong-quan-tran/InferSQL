@@ -1,3 +1,4 @@
+# app/core/observability.py
 from __future__ import annotations
 
 from opentelemetry import metrics, trace
@@ -32,6 +33,17 @@ query_failure_counter = meter.create_counter(
 
 query_duration_histogram = meter.create_histogram(
     "infersql.query.duration.ms",
-    description="Query request duration in milliseconds",
+    description="End-to-end query request duration in milliseconds",
     unit="ms",
+)
+
+query_phase_duration_histogram = meter.create_histogram(
+    "infersql.query.phase.duration.ms",
+    description="Duration of individual query phases in milliseconds",
+    unit="ms",
+)
+
+query_rows_histogram = meter.create_histogram(
+    "infersql.query.rows_returned",
+    description="Distribution of rows returned by executed queries",
 )
