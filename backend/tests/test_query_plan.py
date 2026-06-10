@@ -55,7 +55,14 @@ def test_query_plan_includes_filter_node_when_where_exists() -> None:
 
     filter_node = project_node["children"][0]
     assert filter_node["node_type"] == "Filter"
-    assert filter_node["details"] == {"predicate": "close > 100"}
+    assert filter_node["details"] == {
+        "predicate": {
+            "column": "close",
+            "operator": ">",
+            "value": 100,
+            "sql": "close > 100",
+        }
+    }
 
     scan_node = filter_node["children"][0]
     assert scan_node["node_type"] == "Scan"
