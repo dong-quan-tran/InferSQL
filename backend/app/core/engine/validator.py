@@ -1,7 +1,7 @@
 from sqlglot.errors import ParseError
 
-from app.engine.errors import EmptyQueryError, QueryParseError
-from app.engine.parser import QueryParser
+from app.core.engine.errors import EmptyQueryError, QueryParseError
+from app.core.engine.parser import QueryParser
 
 
 class QueryValidator:
