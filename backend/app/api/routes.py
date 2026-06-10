@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 
-from app.engine.errors import EmptyQueryError, UnsupportedQueryError
-from app.engine.service import planner_service
+from app.core.engine.errors import EmptyQueryError, UnsupportedQueryError
+from app.core.engine.service import planner_service
 from app.schemas.health import HealthResponse, VersionResponse
 from app.schemas.query import QueryPlanRequest, QueryPlanResponse
 
