@@ -24,6 +24,14 @@ class PlanNode(BaseModel):
     children: list["PlanNode"] = Field(default_factory=list)
 
 
+class DebugInfo(BaseModel):
+    request_id: str
+    total_ms: float
+    parse_ms: float | None = None
+    plan_ms: float | None = None
+    execute_ms: float | None = None
+
+
 class QueryValidationResponse(BaseModel):
     sql: str
     normalized_sql: str
@@ -36,7 +44,8 @@ class QueryValidationResponse(BaseModel):
     has_group_by: bool = False
     has_order_by: bool = False
     has_limit: bool = False
-    
+    debug: DebugInfo | None = None
+
 
 class QueryPlanResponse(BaseModel):
     sql: str
@@ -45,6 +54,7 @@ class QueryPlanResponse(BaseModel):
     steps: list[str]
     logical_plan: PlanNode
     physical_plan: PlanNode
+    debug: DebugInfo | None = None
 
 
 class QueryExecuteResponse(BaseModel):
@@ -55,6 +65,7 @@ class QueryExecuteResponse(BaseModel):
     rows: list[dict[str, Any]]
     logical_plan: PlanNode
     physical_plan: PlanNode
+    debug: DebugInfo | None = None
 
 
 PlanNode.model_rebuild()
