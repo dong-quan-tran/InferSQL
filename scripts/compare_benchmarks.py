@@ -40,8 +40,13 @@ def _print_header(baseline: dict[str, Any], candidate: dict[str, Any]) -> None:
     print("=" * 80)
     print("BENCHMARK COMPARISON")
     print("=" * 80)
-    print(f"Baseline run:  {baseline.get('run_id', 'unknown')}")
-    print(f"Candidate run: {candidate.get('run_id', 'unknown')}")
+    baseline_meta = baseline.get("metadata", {})
+    candidate_meta = candidate.get("metadata", {})
+
+    print(f"Baseline run:  {baseline_meta.get('run_id', 'unknown')}")
+    print(f"Candidate run: {candidate_meta.get('run_id', 'unknown')}")
+    print(f"Baseline git:  {baseline_meta.get('git_commit_sha', 'unknown')}")
+    print(f"Candidate git: {candidate_meta.get('git_commit_sha', 'unknown')}")
     print()
 
 

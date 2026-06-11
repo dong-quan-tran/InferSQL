@@ -3,9 +3,13 @@ from __future__ import annotations
 import asyncio
 import csv
 import json
+import platform
+import socket
 import statistics
-from dataclasses import asdict, dataclass
-from datetime import datetime, UTC
+import subprocess
+import sys
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -61,6 +65,38 @@ class BenchmarkResult:
         }
 
 
+def _safe_git(*args: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        value = result.stdout.strip()
+        return value or None
+    except (subprocess.SubprocessError, FileNotFoundError):
+        return None
+
+
+def _build_run_metadata(base_url: str, iterations: int, run_id: str) -> dict[str, Any]:
+    return {
+        "run_id": run_id,
+        "timestamp_utc": run_id,
+        "base_url": base_url,
+        "iterations_per_endpoint": iterations,
+        "git_commit_sha": _safe_git("rev-parse", "HEAD"),
+        "git_branch": _safe_git("rev-parse", "--abbrev-ref", "HEAD"),
+        "python_version": sys.version,
+        "python_implementation": platform.python_implementation(),
+        "platform": platform.platform(),
+        "system": platform.system(),
+        "release": platform.release(),
+        "machine": platform.machine(),
+        "hostname": socket.gethostname(),
+    }
+
+
 async def _run_benchmark(
     client: httpx.AsyncClient,
     name: str,
@@ -106,15 +142,13 @@ def _print_result(result: BenchmarkResult) -> None:
 
 
 def _write_summary_json(
-    run_id: str,
-    base_url: str,
+    metadata: dict[str, Any],
     results: list[BenchmarkResult],
 ) -> Path:
+    run_id = metadata["run_id"]
     output_path = OUTPUT_DIR / f"benchmark_summary_{run_id}.json"
     payload = {
-        "run_id": run_id,
-        "timestamp_utc": run_id,
-        "base_url": base_url,
+        "metadata": metadata,
         "results": [result.summary_dict() for result in results],
     }
     output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -155,6 +189,7 @@ async def main() -> None:
     base_url = "http://127.0.0.1:8000"
     iterations = 50
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    metadata = _build_run_metadata(base_url=base_url, iterations=iterations, run_id=run_id)
 
     validate_payload = {"sql": "SELECT symbol, close FROM prices WHERE close > 100"}
     plan_payload = {"sql": "SELECT symbol, close FROM prices ORDER BY close DESC LIMIT 10"}
@@ -187,10 +222,12 @@ async def main() -> None:
 
     results = [validate_result, plan_result, execute_result]
 
+    print("Run metadata:")
+    print(json.dumps(metadata, indent=2))
     for result in results:
         _print_result(result)
 
-    summary_json_path = _write_summary_json(run_id, base_url, results)
+    summary_json_path = _write_summary_json(metadata, results)
     iterations_csv_path = _write_iterations_csv(run_id, results)
 
     print(f"\nSaved summary JSON to: {summary_json_path}")
