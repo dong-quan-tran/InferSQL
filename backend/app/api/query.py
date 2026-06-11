@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from time import perf_counter
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 import pyarrow as pa
 from opentelemetry.trace import Status, StatusCode
 
@@ -20,6 +20,7 @@ from app.core.observability import (
     tracer,
 )
 from app.schemas.query import (
+    DebugInfo,
     QueryExecuteResponse,
     QueryPlanResponse,
     QueryRequest,
@@ -80,15 +81,24 @@ def seed_demo_data() -> None:
 seed_demo_data()
 
 
-@router.post("/query/validate", response_model=QueryValidationResponse)
-def validate_query(payload: QueryRequest, request: Request) -> QueryValidationResponse:
+@router.post(
+    "/query/validate",
+    response_model=QueryValidationResponse,
+    response_model_exclude_none=True,
+)
+def validate_query(
+    payload: QueryRequest,
+    request: Request,
+    debug: bool = Query(False),
+) -> QueryValidationResponse:
     endpoint = "/query/validate"
     query_counter.add(1, attributes={"endpoint": endpoint})
 
     request_start = perf_counter()
 
     with tracer.start_as_current_span("query.validate") as span:
-        span.set_attribute("request.id", _request_id(request))
+        request_id = _request_id(request)
+        span.set_attribute("request.id", request_id)
         span.set_attribute("query.sql", payload.sql)
 
         try:
@@ -124,11 +134,22 @@ def validate_query(payload: QueryRequest, request: Request) -> QueryValidationRe
                         "query.type": summary["query_type"],
                     },
                 )
+                span.set_attribute("error.type", "unsupported_query")
                 span.set_status(
                     Status(
                         StatusCode.ERROR,
                         "Only SELECT queries are supported right now",
                     )
+                )
+
+            debug_info: DebugInfo | None = None
+            if debug:
+                debug_info = DebugInfo(
+                    request_id=request_id,
+                    total_ms=round(total_duration_ms, 3),
+                    parse_ms=None,
+                    plan_ms=None,
+                    execute_ms=None,
                 )
 
             return QueryValidationResponse(
@@ -143,10 +164,12 @@ def validate_query(payload: QueryRequest, request: Request) -> QueryValidationRe
                 has_group_by=summary["has_group_by"],
                 has_order_by=summary["has_order_by"],
                 has_limit=summary["has_limit"],
+                debug=debug_info,
             )
         except ValueError as exc:
             total_duration_ms = _record_total_duration(endpoint, request_start)
             span.set_attribute("timing.total_ms", round(total_duration_ms, 3))
+            span.set_attribute("error.type", "value_error")
             query_failure_counter.add(
                 1,
                 attributes={"endpoint": endpoint, "error.type": "value_error"},
@@ -156,15 +179,24 @@ def validate_query(payload: QueryRequest, request: Request) -> QueryValidationRe
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.post("/query/plan", response_model=QueryPlanResponse)
-def plan_query(payload: QueryRequest, request: Request) -> QueryPlanResponse:
+@router.post(
+    "/query/plan",
+    response_model=QueryPlanResponse,
+    response_model_exclude_none=True,
+)
+def plan_query(
+    payload: QueryRequest,
+    request: Request,
+    debug: bool = Query(False),
+) -> QueryPlanResponse:
     endpoint = "/query/plan"
     query_counter.add(1, attributes={"endpoint": endpoint})
 
     request_start = perf_counter()
 
     with tracer.start_as_current_span("query.plan_request") as span:
-        span.set_attribute("request.id", _request_id(request))
+        request_id = _request_id(request)
+        span.set_attribute("request.id", request_id)
         span.set_attribute("query.sql", payload.sql)
 
         try:
@@ -192,6 +224,16 @@ def plan_query(payload: QueryRequest, request: Request) -> QueryPlanResponse:
             span.set_attribute("timing.plan_ms", round(plan_duration_ms, 3))
             span.set_attribute("timing.total_ms", round(total_duration_ms, 3))
 
+            debug_info: DebugInfo | None = None
+            if debug:
+                debug_info = DebugInfo(
+                    request_id=request_id,
+                    total_ms=round(total_duration_ms, 3),
+                    parse_ms=round(parse_duration_ms, 3),
+                    plan_ms=round(plan_duration_ms, 3),
+                    execute_ms=None,
+                )
+
             return QueryPlanResponse(
                 sql=payload.sql,
                 normalized_sql=normalized_sql,
@@ -205,10 +247,12 @@ def plan_query(payload: QueryRequest, request: Request) -> QueryPlanResponse:
                 ],
                 logical_plan=logical_plan,
                 physical_plan=physical_plan,
+                debug=debug_info,
             )
         except ValueError as exc:
             total_duration_ms = _record_total_duration(endpoint, request_start)
             span.set_attribute("timing.total_ms", round(total_duration_ms, 3))
+            span.set_attribute("error.type", "value_error")
             query_failure_counter.add(
                 1,
                 attributes={"endpoint": endpoint, "error.type": "value_error"},
@@ -218,15 +262,24 @@ def plan_query(payload: QueryRequest, request: Request) -> QueryPlanResponse:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.post("/query/execute", response_model=QueryExecuteResponse)
-def execute_query(payload: QueryRequest, request: Request) -> QueryExecuteResponse:
+@router.post(
+    "/query/execute",
+    response_model=QueryExecuteResponse,
+    response_model_exclude_none=True,
+)
+def execute_query(
+    payload: QueryRequest,
+    request: Request,
+    debug: bool = Query(False),
+) -> QueryExecuteResponse:
     endpoint = "/query/execute"
     query_counter.add(1, attributes={"endpoint": endpoint})
 
     request_start = perf_counter()
 
     with tracer.start_as_current_span("query.execute") as span:
-        span.set_attribute("request.id", _request_id(request))
+        request_id = _request_id(request)
+        span.set_attribute("request.id", request_id)
         span.set_attribute("query.sql", payload.sql)
 
         try:
@@ -264,6 +317,16 @@ def execute_query(payload: QueryRequest, request: Request) -> QueryExecuteRespon
             span.set_attribute("timing.execute_ms", round(execute_duration_ms, 3))
             span.set_attribute("timing.total_ms", round(total_duration_ms, 3))
 
+            debug_info: DebugInfo | None = None
+            if debug:
+                debug_info = DebugInfo(
+                    request_id=request_id,
+                    total_ms=round(total_duration_ms, 3),
+                    parse_ms=round(parse_duration_ms, 3),
+                    plan_ms=round(plan_duration_ms, 3),
+                    execute_ms=round(execute_duration_ms, 3),
+                )
+
             return QueryExecuteResponse(
                 sql=payload.sql,
                 normalized_sql=normalized_sql,
@@ -272,10 +335,12 @@ def execute_query(payload: QueryRequest, request: Request) -> QueryExecuteRespon
                 rows=result_table.to_pylist(),
                 logical_plan=logical_plan,
                 physical_plan=physical_plan,
+                debug=debug_info,
             )
         except DatasetNotFoundError as exc:
             total_duration_ms = _record_total_duration(endpoint, request_start)
             span.set_attribute("timing.total_ms", round(total_duration_ms, 3))
+            span.set_attribute("error.type", "dataset_not_found")
             query_failure_counter.add(
                 1,
                 attributes={"endpoint": endpoint, "error.type": "dataset_not_found"},
@@ -286,6 +351,7 @@ def execute_query(payload: QueryRequest, request: Request) -> QueryExecuteRespon
         except ValueError as exc:
             total_duration_ms = _record_total_duration(endpoint, request_start)
             span.set_attribute("timing.total_ms", round(total_duration_ms, 3))
+            span.set_attribute("error.type", "value_error")
             query_failure_counter.add(
                 1,
                 attributes={"endpoint": endpoint, "error.type": "value_error"},
