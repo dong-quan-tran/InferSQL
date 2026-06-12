@@ -1,4 +1,3 @@
-# app/services/query_service.py
 from __future__ import annotations
 
 import pyarrow as pa
@@ -93,6 +92,14 @@ class QueryService:
         response = {
             "sql": sql,
             "normalized_sql": compiled.normalized_sql,
+            "engine": "infersql-executor",
+            "steps": [
+                "parse_sql",
+                "build_logical_plan",
+                "build_physical_plan",
+                "execute_plan",
+                "serialize_results",
+            ],
             "columns": columns,
             "rows": rows,
             "row_count": len(rows),
