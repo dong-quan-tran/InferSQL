@@ -44,6 +44,7 @@ class JSONFormatter(logging.Formatter):
             "http_status_code",
             "duration_ms",
             "client_ip",
+            "error_type",
         )
 
         for field in optional_fields:
