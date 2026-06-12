@@ -15,15 +15,19 @@ from app.core.exceptions import BadRequestError, InferSQLError, NotFoundError
 from app.core.logging import configure_logging, set_request_id
 from app.core.observability import http_request_duration_histogram
 from app.core.settings import get_settings
+from app.services.query_service import QueryService
 
 logger = logging.getLogger(__name__)
 access_logger = logging.getLogger("app.access")
 error_logger = logging.getLogger("app.error")
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
     configure_logging(json_logs=settings.log_json, log_level=settings.log_level)
+
+    app.state.query_service = QueryService()
 
     logger.info(
         "Starting %s env=%s",
@@ -47,7 +51,7 @@ def create_app() -> FastAPI:
     app.include_router(api_router)
 
     FastAPIInstrumentor.instrument_app(app)
-    
+
     @app.exception_handler(BadRequestError)
     async def bad_request_error_handler(request: Request, exc: BadRequestError):
         error_logger.warning(
@@ -59,11 +63,7 @@ def create_app() -> FastAPI:
                 "http_status_code": 400,
             },
         )
-        return JSONResponse(
-            status_code=400,
-            content={"detail": exc.message},
-        )
-
+        return JSONResponse(status_code=400, content={"detail": exc.message})
 
     @app.exception_handler(NotFoundError)
     async def not_found_error_handler(request: Request, exc: NotFoundError):
@@ -76,11 +76,7 @@ def create_app() -> FastAPI:
                 "http_status_code": 404,
             },
         )
-        return JSONResponse(
-            status_code=404,
-            content={"detail": exc.message},
-        )
-
+        return JSONResponse(status_code=404, content={"detail": exc.message})
 
     @app.exception_handler(InferSQLError)
     async def generic_infersql_error_handler(request: Request, exc: InferSQLError):
@@ -94,10 +90,7 @@ def create_app() -> FastAPI:
             },
             exc_info=True,
         )
-        return JSONResponse(
-            status_code=500,
-            content={"detail": str(exc)},
-        )
+        return JSONResponse(status_code=500, content={"detail": str(exc)})
 
     @app.middleware("http")
     async def add_request_context(request: Request, call_next):
