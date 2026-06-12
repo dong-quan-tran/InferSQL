@@ -33,3 +33,15 @@ def test_query_execute_rejects_non_select(client: TestClient) -> None:
     assert response.json() == {
         "detail": "Only SELECT queries are supported right now",
     }
+
+
+def test_query_execute_rejects_unknown_column(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={"sql": "SELECT nope FROM prices LIMIT 5"},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "detail": "Unknown column 'nope' on dataset 'prices'",
+    }

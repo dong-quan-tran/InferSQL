@@ -104,3 +104,15 @@ def test_query_plan_rejects_invalid_sql_syntax(client: TestClient) -> None:
     response = client.post("/query/plan", json={"sql": "SELECT FROM"})
     assert response.status_code == 400
     assert response.json() == {"detail": "Invalid SQL syntax"}
+
+
+def test_query_plan_rejects_unknown_column(client: TestClient) -> None:
+    response = client.post(
+        "/query/plan",
+        json={"sql": "SELECT nope FROM prices LIMIT 5"},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "detail": "Unknown column 'nope' on dataset 'prices'",
+    }
