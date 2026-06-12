@@ -4,13 +4,13 @@ from __future__ import annotations
 from time import perf_counter
 
 import pyarrow as pa
-from fastapi import HTTPException
 from opentelemetry.trace import Status, StatusCode
 
 from app.core.catalog import DatasetNotFoundError, DatasetRegistry
 from app.core.engine.executor import QueryExecutor
 from app.core.engine.physical_planner import PhysicalPlanner
 from app.core.engine.parser import QueryParser
+from app.core.exceptions import BadRequestError, NotFoundError
 from app.core.observability import (
     query_counter,
     query_duration_histogram,
@@ -266,7 +266,7 @@ class QueryService:
                 )
                 span.record_exception(exc)
                 span.set_status(Status(StatusCode.ERROR, str(exc)))
-                raise HTTPException(status_code=404, detail=str(exc)) from exc
+                raise NotFoundError(str(exc)) from exc
             except ValueError as exc:
                 self._handle_value_error(
                     endpoint=endpoint,
@@ -336,7 +336,7 @@ class QueryService:
         )
         span.record_exception(exc)
         span.set_status(Status(StatusCode.ERROR, str(exc)))
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise BadRequestError(str(exc)) from exc
 
     def _seed_demo_data(self) -> None:
         if "prices" not in self.dataset_registry.list_tables():
