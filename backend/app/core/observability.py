@@ -7,18 +7,23 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 
-SERVICE_NAME = "infersql-backend"
+from app.core.settings import get_settings
 
-_resource = Resource.create({"service.name": SERVICE_NAME})
+
+settings = get_settings()
+
+_resource = Resource.create({"service.name": settings.service_name})
 
 _tracer_provider = TracerProvider(resource=_resource)
+if settings.console_span_exporter_enabled:
+    _tracer_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
 trace.set_tracer_provider(_tracer_provider)
 
 _meter_provider = MeterProvider(resource=_resource)
 metrics.set_meter_provider(_meter_provider)
 
-tracer = trace.get_tracer(SERVICE_NAME)
-meter = metrics.get_meter(SERVICE_NAME)
+tracer = trace.get_tracer(settings.service_name)
+meter = metrics.get_meter(settings.service_name)
 
 http_request_duration_histogram = meter.create_histogram(
     "infersql.http.request.duration.ms",

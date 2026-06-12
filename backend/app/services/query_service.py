@@ -6,6 +6,7 @@ from time import perf_counter
 import pyarrow as pa
 from opentelemetry.trace import Status, StatusCode
 
+from app.core.settings import get_settings
 from app.core.catalog import DatasetNotFoundError, DatasetRegistry
 from app.core.engine.executor import QueryExecutor
 from app.core.engine.physical_planner import PhysicalPlanner
@@ -29,11 +30,14 @@ from app.schemas.query import (
 
 class QueryService:
     def __init__(self) -> None:
+        self.settings = get_settings()
         self.dataset_registry = DatasetRegistry()
         self.physical_planner = PhysicalPlanner()
         self.query_parser = QueryParser()
         self.query_executor = QueryExecutor(self.dataset_registry)
-        self._seed_demo_data()
+
+        if self.settings.seed_demo_data:
+            self._seed_demo_data()
 
     def validate(
         self,

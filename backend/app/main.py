@@ -11,10 +11,13 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from app.api import router as api_router
 from app.core.exceptions import BadRequestError, InferSQLError, NotFoundError
 from app.core.observability import http_request_duration_histogram
+from app.core.settings import get_settings
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="InferSQL API")
+    settings = get_settings()
+
+    app = FastAPI(title=settings.app_name)
     app.include_router(api_router)
 
     FastAPIInstrumentor.instrument_app(app)
