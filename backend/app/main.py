@@ -17,7 +17,7 @@ from app.core.observability import http_request_duration_histogram
 from app.core.settings import get_settings
 
 logger = logging.getLogger(__name__)
-
+access_logger = logging.getLogger("app.access")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -88,6 +88,18 @@ def create_app() -> FastAPI:
                 "http.target": request.url.path,
             },
         )
+
+        access_logger.info(
+            "request completed",
+            extra={
+                "http_method": request.method,
+                "http_path": request.url.path,
+                "http_status_code": response.status_code,
+                "duration_ms": round(duration_ms, 3),
+                "client_ip": request.client.host if request.client else None,
+            },
+        )
+
         return response
 
     return app
