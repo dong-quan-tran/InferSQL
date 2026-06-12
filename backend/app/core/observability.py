@@ -12,7 +12,6 @@ SERVICE_NAME = "infersql-backend"
 _resource = Resource.create({"service.name": SERVICE_NAME})
 
 _tracer_provider = TracerProvider(resource=_resource)
-_tracer_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
 trace.set_tracer_provider(_tracer_provider)
 
 _meter_provider = MeterProvider(resource=_resource)
