@@ -12,6 +12,22 @@ error_logger = logging.getLogger("app.error")
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    @app.exception_handler(ValueError)
+    async def value_error_handler(request: Request, exc: ValueError):
+        error_logger.warning(
+            "request failed with value error",
+            extra={
+                "error_type": "value_error",
+                "http_method": request.method,
+                "http_path": request.url.path,
+                "http_status_code": 400,
+            },
+        )
+        return JSONResponse(
+            status_code=400,
+            content={"detail": str(exc)},
+        )
+
     @app.exception_handler(BadRequestError)
     async def bad_request_error_handler(request: Request, exc: BadRequestError):
         error_logger.warning(
