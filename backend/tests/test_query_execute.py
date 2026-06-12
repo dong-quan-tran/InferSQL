@@ -1,12 +1,8 @@
 # tests/test_query_execute.py
 from fastapi.testclient import TestClient
 
-from app.main import app
 
-client = TestClient(app)
-
-
-def test_query_execute_returns_rows() -> None:
+def test_query_execute_returns_rows(client: TestClient) -> None:
     response = client.post(
         "/query/execute",
         json={"sql": "SELECT symbol, close FROM prices WHERE close > 100 LIMIT 2"},
@@ -27,7 +23,7 @@ def test_query_execute_returns_rows() -> None:
     assert data["physical_plan"]["node_type"] == "Limit"
 
 
-def test_query_execute_rejects_non_select() -> None:
+def test_query_execute_rejects_non_select(client: TestClient) -> None:
     response = client.post(
         "/query/execute",
         json={"sql": "DELETE FROM prices WHERE symbol = 'AAPL'"},

@@ -1,11 +1,8 @@
+# tests/test_query_plan.py
 from fastapi.testclient import TestClient
 
-from app.main import app
 
-client = TestClient(app)
-
-
-def test_query_plan_returns_expected_shape() -> None:
+def test_query_plan_returns_expected_shape(client: TestClient) -> None:
     response = client.post(
         "/query/plan",
         json={"sql": "SELECT symbol, close FROM prices LIMIT 10"},
@@ -38,7 +35,7 @@ def test_query_plan_returns_expected_shape() -> None:
     assert scan_node["details"] == {"table": "prices"}
 
 
-def test_query_plan_includes_filter_node_when_where_exists() -> None:
+def test_query_plan_includes_filter_node_when_where_exists(client: TestClient) -> None:
     response = client.post(
         "/query/plan",
         json={"sql": "SELECT symbol FROM prices WHERE close > 100 LIMIT 5"},
@@ -69,7 +66,7 @@ def test_query_plan_includes_filter_node_when_where_exists() -> None:
     assert scan_node["details"] == {"table": "prices"}
 
 
-def test_query_plan_normalizes_whitespace() -> None:
+def test_query_plan_normalizes_whitespace(client: TestClient) -> None:
     response = client.post(
         "/query/plan",
         json={"sql": " SELECT   symbol,   close   FROM prices   LIMIT 10 "},
@@ -80,18 +77,18 @@ def test_query_plan_normalizes_whitespace() -> None:
     assert data["normalized_sql"] == "SELECT symbol, close FROM prices LIMIT 10"
 
 
-def test_query_plan_rejects_missing_payload() -> None:
+def test_query_plan_rejects_missing_payload(client: TestClient) -> None:
     response = client.post("/query/plan", json={})
     assert response.status_code == 422
 
 
-def test_query_plan_rejects_blank_sql() -> None:
+def test_query_plan_rejects_blank_sql(client: TestClient) -> None:
     response = client.post("/query/plan", json={"sql": "   "})
     assert response.status_code == 422
     assert "SQL must not be empty" in str(response.json())
 
 
-def test_query_plan_rejects_non_select_sql() -> None:
+def test_query_plan_rejects_non_select_sql(client: TestClient) -> None:
     response = client.post(
         "/query/plan",
         json={"sql": "DELETE FROM prices WHERE symbol = 'AAPL'"},
@@ -103,7 +100,7 @@ def test_query_plan_rejects_non_select_sql() -> None:
     }
 
 
-def test_query_plan_rejects_invalid_sql_syntax() -> None:
+def test_query_plan_rejects_invalid_sql_syntax(client: TestClient) -> None:
     response = client.post("/query/plan", json={"sql": "SELECT FROM"})
     assert response.status_code == 400
     assert response.json() == {"detail": "Invalid SQL syntax"}
