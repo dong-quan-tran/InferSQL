@@ -16,7 +16,7 @@ from app.services.query_service import QueryService
 
 
 router = APIRouter()
-
+query_service = QueryService()
 
 def _request_id(request: Request) -> str:
     return getattr(request.state, "request_id", "unknown")
@@ -58,19 +58,12 @@ def plan_query(
     )
 
 
-@router.post(
-    "/query/execute",
-    response_model=QueryExecuteResponse,
-    response_model_exclude_none=True,
-)
+@router.post("/query/execute")
 def execute_query(
-    payload: QueryRequest,
-    request: Request,
-    debug: bool = Query(False),
-    query_service: Annotated[QueryService, Depends(get_query_service)] = None,
-) -> QueryExecuteResponse:
-    return query_service.execute(
-        sql=payload.sql,
-        request_id=_request_id(request),
-        debug=debug,
-    )
+    payload: dict,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    sql = payload.get("sql")
+    # existing validation for missing/blank sql stays the same
+    return query_service.execute(sql=sql, limit=limit, offset=offset)

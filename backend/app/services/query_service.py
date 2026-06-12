@@ -82,12 +82,26 @@ class QueryService:
 
         return response
 
-    def execute(self, sql: str, request_id: str | None = None, debug: bool = False):
+    def execute(
+        self,
+        sql: str,
+        request_id: str | None = None,
+        debug: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+    ):
         compiled = self.query_compiler.compile(sql)
         result = self.query_runner.run(compiled.physical_plan)
 
-        rows = result.to_pylist()
-        columns = list(result.column_names)
+        total_rows = result.num_rows
+        # Clamp offset to total_rows so slice() never errors
+        safe_offset = min(offset, total_rows)
+        safe_limit = max(0, min(limit, total_rows - safe_offset))
+
+        sliced = result.slice(safe_offset, safe_limit)
+
+        rows = sliced.to_pylist()
+        columns = list(sliced.column_names)
 
         response = {
             "sql": sql,
@@ -103,6 +117,9 @@ class QueryService:
             "columns": columns,
             "rows": rows,
             "row_count": len(rows),
+            "limit": limit,
+            "offset": offset,
+            "has_more": safe_offset + safe_limit < total_rows,
             "logical_plan": compiled.logical_plan.model_dump(),
             "physical_plan": compiled.physical_plan.model_dump(),
         }
