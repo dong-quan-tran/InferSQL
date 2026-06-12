@@ -12,6 +12,7 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 from app.api import router as api_router
 from app.core.exceptions import BadRequestError, InferSQLError, NotFoundError
+from app.core.logging import configure_logging, set_request_id
 from app.core.observability import http_request_duration_histogram
 from app.core.settings import get_settings
 
@@ -21,9 +22,10 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    configure_logging(json_logs=settings.log_json, log_level=settings.log_level)
 
     logger.info(
-        "Starting %s [env=%s]",
+        "Starting %s env=%s",
         settings.app_name,
         settings.environment,
     )
@@ -31,7 +33,7 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info(
-        "Shutting down %s [env=%s]",
+        "Shutting down %s env=%s",
         settings.app_name,
         settings.environment,
     )
@@ -70,6 +72,7 @@ def create_app() -> FastAPI:
     async def add_request_context(request: Request, call_next):
         request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
         request.state.request_id = request_id
+        set_request_id(request_id)
 
         start = time.perf_counter()
         response = await call_next(request)

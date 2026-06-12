@@ -16,6 +16,9 @@ class Settings(BaseSettings):
 
     seed_demo_data: bool = True
 
+    log_level: str = "INFO"
+    log_json: bool = True
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
