@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from app.api.dependencies import get_query_service
 from app.schemas.query import (
+    ErrorResponse,
     QueryExecuteResponse,
     QueryPlanResponse,
     QueryRequest,
@@ -17,6 +18,22 @@ from app.services.query_service import QueryService
 router = APIRouter()
 
 
+ERROR_RESPONSES = {
+    400: {
+        "model": ErrorResponse,
+        "description": "Bad request or unsupported query",
+    },
+    404: {
+        "model": ErrorResponse,
+        "description": "Referenced dataset not found",
+    },
+    500: {
+        "model": ErrorResponse,
+        "description": "Internal InferSQL error",
+    },
+}
+
+
 def _request_id(request: Request) -> str:
     return getattr(request.state, "request_id", "unknown")
 
@@ -25,6 +42,16 @@ def _request_id(request: Request) -> str:
     "/query/validate",
     response_model=QueryValidationResponse,
     response_model_exclude_none=True,
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": "Invalid SQL syntax",
+        },
+        500: {
+            "model": ErrorResponse,
+            "description": "Internal InferSQL error",
+        },
+    },
 )
 def validate_query(
     payload: QueryRequest,
@@ -43,6 +70,7 @@ def validate_query(
     "/query/plan",
     response_model=QueryPlanResponse,
     response_model_exclude_none=True,
+    responses=ERROR_RESPONSES,
 )
 def plan_query(
     payload: QueryRequest,
@@ -61,6 +89,7 @@ def plan_query(
     "/query/execute",
     response_model=QueryExecuteResponse,
     response_model_exclude_none=True,
+    responses=ERROR_RESPONSES,
 )
 def execute_query(
     payload: QueryRequest,

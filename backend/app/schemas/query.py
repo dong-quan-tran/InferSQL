@@ -1,4 +1,3 @@
-# app/schemas/query.py
 from __future__ import annotations
 
 from typing import Any
@@ -30,6 +29,18 @@ class DebugInfo(BaseModel):
     parse_ms: float | None = None
     plan_ms: float | None = None
     execute_ms: float | None = None
+
+
+class ErrorDetail(BaseModel):
+    type: str
+    code: str
+    message: str
+    status_code: int
+    request_id: str
+
+
+class ErrorResponse(BaseModel):
+    error: ErrorDetail
 
 
 class QueryValidationResponse(BaseModel):
