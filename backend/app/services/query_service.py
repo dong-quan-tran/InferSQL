@@ -4,6 +4,13 @@ import pyarrow as pa
 
 from app.core.catalog.registry import DatasetNotFoundError, DatasetRegistry
 from app.core.engine.parser import QueryParser
+from app.core.exceptions import (
+    EmptyQueryError,
+    InvalidQuerySyntaxError,
+    UnknownColumnError,
+    UnknownDatasetError,
+    UnsupportedQueryError,
+)
 from app.core.settings import get_settings
 from app.services.query_compiler import QueryCompiler
 from app.services.query_runner import QueryRunner
@@ -30,16 +37,16 @@ class QueryService:
 
         try:
             self.query_parser.validate_select_only(expression)
-        except ValueError as exc:
+            self._validate_referenced_schema(normalized_sql)
+        except (
+            EmptyQueryError,
+            InvalidQuerySyntaxError,
+            UnsupportedQueryError,
+            UnknownDatasetError,
+            UnknownColumnError,
+        ) as exc:
             is_valid = False
             errors.append(str(exc))
-
-        if is_valid:
-            try:
-                self._validate_referenced_schema(normalized_sql)
-            except ValueError as exc:
-                is_valid = False
-                errors.append(str(exc))
 
         response = {
             "sql": sql,
@@ -78,13 +85,15 @@ class QueryService:
                 "build_logical_plan",
                 "build_physical_plan",
             ],
-            "summary": self.query_parser.summarize(sql),
             "logical_plan": compiled.logical_plan.model_dump(),
             "physical_plan": compiled.physical_plan.model_dump(),
         }
 
         if debug:
-            response["debug"] = {"request_id": request_id}
+            response["debug"] = {
+                "request_id": request_id,
+                "total_ms": 0.0,
+            }
 
         return response
 
@@ -112,20 +121,9 @@ class QueryService:
         response = {
             "sql": sql,
             "normalized_sql": compiled.normalized_sql,
-            "engine": "infersql-executor",
-            "steps": [
-                "parse_sql",
-                "build_logical_plan",
-                "build_physical_plan",
-                "execute_plan",
-                "serialize_results",
-            ],
+            "row_count": len(rows),
             "columns": columns,
             "rows": rows,
-            "row_count": len(rows),
-            "limit": limit,
-            "offset": offset,
-            "has_more": safe_offset + safe_limit < total_rows,
             "logical_plan": compiled.logical_plan.model_dump(),
             "physical_plan": compiled.physical_plan.model_dump(),
         }
@@ -157,25 +155,31 @@ class QueryService:
         self.dataset_registry.register_table("prices", prices)
 
     def _validate_referenced_schema(self, sql: str) -> None:
-        expression = self.query_parser.parse(sql)
+        normalized_sql = " ".join(sql.strip().split())
+        if not normalized_sql:
+            raise EmptyQueryError("SQL must not be empty")
+
+        expression = self.query_parser.parse(normalized_sql)
         self.query_parser.validate_select_only(expression)
 
-        summary = self.query_parser.summarize(sql)
+        summary = self.query_parser.summarize(normalized_sql)
         tables = summary["tables"]
         columns = summary["columns"]
 
         if not tables:
-            raise ValueError("Query must reference a dataset")
+            raise UnsupportedQueryError("Query must reference a dataset")
 
         if len(tables) > 1:
-            raise ValueError("Only single-table queries are supported right now")
+            raise UnsupportedQueryError(
+                "Only single-table queries are supported right now"
+            )
 
         dataset_name = tables[0]
 
         try:
             table = self.dataset_registry.get(dataset_name)
         except DatasetNotFoundError as exc:
-            raise ValueError(f"Unknown dataset '{dataset_name}'") from exc
+            raise UnknownDatasetError(f"Unknown dataset '{dataset_name}'") from exc
 
         available_columns = set(table.column_names)
 
@@ -183,6 +187,6 @@ class QueryService:
             if column == "*":
                 continue
             if column not in available_columns:
-                raise ValueError(
+                raise UnknownColumnError(
                     f"Unknown column '{column}' on dataset '{dataset_name}'"
                 )

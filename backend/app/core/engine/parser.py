@@ -1,11 +1,9 @@
-# app/engine/parser.py
 from __future__ import annotations
-
-from typing import Any
 
 from sqlglot import exp, parse_one
 from sqlglot.errors import ParseError
 
+from app.core.exceptions import InvalidQuerySyntaxError, UnsupportedQueryError
 from app.schemas.query import PlanNode
 
 
@@ -14,115 +12,117 @@ class QueryParser:
         try:
             return parse_one(sql)
         except ParseError as exc:
-            raise ValueError("Invalid SQL syntax") from exc
+            raise InvalidQuerySyntaxError("Invalid SQL syntax") from exc
 
     def validate_select_only(self, expression: exp.Expression) -> None:
         if not isinstance(expression, exp.Select):
-            raise ValueError("Only SELECT queries are supported right now")
+            raise UnsupportedQueryError("Only SELECT queries are supported right now")
 
-    def summarize(self, sql: str) -> dict[str, Any]:
+    def summarize(self, sql: str) -> dict:
         expression = self.parse(sql)
 
-        query_type = expression.key.upper()
-        tables = sorted({table.sql() for table in expression.find_all(exp.Table)})
-        columns = sorted({column.sql() for column in expression.find_all(exp.Column)})
+        tables = sorted({table.name for table in expression.find_all(exp.Table)})
+        columns = sorted(
+            {
+                column.alias_or_name
+                for column in expression.find_all(exp.Column)
+                if column.alias_or_name
+            }
+        )
 
-        has_where = expression.args.get("where") is not None
-        has_group_by = expression.args.get("group") is not None
-        has_order_by = expression.args.get("order") is not None
-        has_limit = expression.args.get("limit") is not None
+        where = expression.args.get("where")
+        group = expression.args.get("group")
+        order = expression.args.get("order")
+        limit = expression.args.get("limit")
 
         return {
-            "query_type": query_type,
+            "query_type": expression.key.upper(),
             "tables": tables,
             "columns": columns,
-            "has_where": has_where,
-            "has_group_by": has_group_by,
-            "has_order_by": has_order_by,
-            "has_limit": has_limit,
+            "has_where": where is not None,
+            "has_group_by": group is not None,
+            "has_order_by": order is not None,
+            "has_limit": limit is not None,
         }
 
     def build_logical_plan(self, sql: str) -> PlanNode:
         expression = self.parse(sql)
         self.validate_select_only(expression)
 
-        table = next(expression.find_all(exp.Table), None)
-        if table is None:
-            raise ValueError("Query must reference a table")
+        from_clause = expression.args.get("from_")
+        if from_clause is None or from_clause.this is None:
+            raise InvalidQuerySyntaxError("Invalid SQL syntax")
 
-        select_expressions = expression.expressions or []
-        projected_columns = [expr.sql() for expr in select_expressions] or ["*"]
-
-        current_node = PlanNode(
+        table = from_clause.this.name
+        current = PlanNode(
             node_type="Scan",
-            details={"table": table.sql()},
+            details={"table": table},
             children=[],
         )
 
-        where_clause = expression.args.get("where")
-        if where_clause is not None:
-            predicate = self._parse_predicate(where_clause.this)
-            current_node = PlanNode(
+        where = expression.args.get("where")
+        if where is not None:
+            predicate = where.this
+            current = PlanNode(
                 node_type="Filter",
-                details={"predicate": predicate},
-                children=[current_node],
+                details={
+                    "predicate": {
+                        "column": predicate.left.name,
+                        "operator": predicate.__class__.__name__.upper(),
+                        "value": self._literal_value(predicate.right),
+                        "sql": predicate.sql(),
+                    }
+                },
+                children=[current],
             )
 
-        current_node = PlanNode(
+            operator_map = {
+                "GT": ">",
+                "GTE": ">=",
+                "LT": "<",
+                "LTE": "<=",
+                "EQ": "=",
+                "NEQ": "!=",
+            }
+            current.details["predicate"]["operator"] = operator_map.get(
+                current.details["predicate"]["operator"],
+                current.details["predicate"]["operator"],
+            )
+
+        select_expressions = expression.expressions or []
+        columns = []
+        for item in select_expressions:
+            if isinstance(item, exp.Star):
+                columns.append("*")
+            elif isinstance(item, exp.Column):
+                columns.append(item.name)
+            else:
+                columns.append(item.sql())
+
+        current = PlanNode(
             node_type="Project",
-            details={"columns": projected_columns},
-            children=[current_node],
+            details={"columns": columns},
+            children=[current],
         )
 
-        limit_clause = expression.args.get("limit")
-        if limit_clause is not None and limit_clause.expression is not None:
-            limit_value = int(limit_clause.expression.name)
-            current_node = PlanNode(
+        limit = expression.args.get("limit")
+        if limit is not None and limit.expression is not None:
+            current = PlanNode(
                 node_type="Limit",
-                details={"count": limit_value},
-                children=[current_node],
+                details={"count": int(limit.expression.name)},
+                children=[current],
             )
 
-        return current_node
+        return current
 
-    def _parse_predicate(self, predicate_expr: exp.Expression) -> dict[str, Any]:
-        operator_map: dict[type[exp.Expression], str] = {
-            exp.EQ: "=",
-            exp.NEQ: "!=",
-            exp.GT: ">",
-            exp.GTE: ">=",
-            exp.LT: "<",
-            exp.LTE: "<=",
-        }
-
-        for expr_type, operator in operator_map.items():
-            if isinstance(predicate_expr, expr_type):
-                left = predicate_expr.left
-                right = predicate_expr.right
-
-                if not isinstance(left, exp.Column):
-                    raise ValueError("Only simple column predicates are supported right now")
-
-                return {
-                    "column": left.sql(),
-                    "operator": operator,
-                    "value": self._extract_literal(right),
-                    "sql": predicate_expr.sql(),
-                }
-
-        raise ValueError("Only simple WHERE predicates are supported right now")
-
-    def _extract_literal(self, expr: exp.Expression) -> Any:
-        if isinstance(expr, exp.Literal):
-            if expr.is_string:
-                return expr.this
-
-            raw = expr.this
+    def _literal_value(self, node):
+        if isinstance(node, exp.Literal):
+            if node.is_string:
+                return node.this
             try:
-                if "." in raw:
-                    return float(raw)
-                return int(raw)
+                if "." in node.this:
+                    return float(node.this)
+                return int(node.this)
             except ValueError:
-                return raw
-
-        raise ValueError("Only literal comparisons are supported right now")
+                return node.this
+        return node.sql()
