@@ -1,4 +1,3 @@
-# app/core/logging.py
 from __future__ import annotations
 
 import json
@@ -7,6 +6,7 @@ import sys
 from contextvars import ContextVar
 from typing import Any
 
+
 _request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
 
 
@@ -14,21 +14,21 @@ def set_request_id(request_id: str) -> None:
     _request_id_var.set(request_id)
 
 
+def clear_request_id() -> None:
+    _request_id_var.set("-")
+
+
 def get_request_id() -> str:
     return _request_id_var.get()
 
 
 class RequestIdFilter(logging.Filter):
-    """Injects request_id from contextvars into every log record."""
-
     def filter(self, record: logging.LogRecord) -> bool:
         record.request_id = _request_id_var.get()
         return True
 
 
 class JSONFormatter(logging.Formatter):
-    """Formats log records as single-line JSON."""
-
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {
             "timestamp": self.formatTime(record, self.datefmt),
@@ -45,6 +45,10 @@ class JSONFormatter(logging.Formatter):
             "duration_ms",
             "client_ip",
             "error_type",
+            "error_code",
+            "stage",
+            "dataset",
+            "environment",
         )
 
         for field in optional_fields:
@@ -59,10 +63,6 @@ class JSONFormatter(logging.Formatter):
 
 
 def configure_logging(json_logs: bool = True, log_level: str = "INFO") -> None:
-    """
-    Call once at app startup. Replaces root logger handlers
-    with a single stdout handler in JSON or plain-text format.
-    """
     handler = logging.StreamHandler(sys.stdout)
     handler.addFilter(RequestIdFilter())
 
@@ -71,7 +71,8 @@ def configure_logging(json_logs: bool = True, log_level: str = "INFO") -> None:
     else:
         handler.setFormatter(
             logging.Formatter(
-                "%(asctime)s [%(levelname)s] %(name)s request_id=%(request_id)s — %(message)s"
+                "%(asctime)s [%(levelname)s] %(name)s request_id=%(request_id)s "
+                "stage=%(stage)s dataset=%(dataset)s error_code=%(error_code)s — %(message)s"
             )
         )
 

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
-from app.core.exceptions import (
-    BadRequestError,
-    InferSQLError,
-    NotFoundError,
-)
+from app.core.exceptions import BadRequestError, InferSQLError, NotFoundError
+
+
+logger = logging.getLogger("app.errors")
 
 
 def _error_body(
@@ -20,11 +21,30 @@ def _error_body(
     return {
         "error": {
             "type": error_type,
+            "code": error_type.upper(),
             "message": message,
             "status_code": status_code,
             "request_id": request_id,
         }
     }
+
+
+def _log_exception(
+    request: Request,
+    exc: Exception,
+    status_code: int,
+) -> None:
+    logger.warning(
+        "request failed",
+        extra={
+            "http_method": request.method,
+            "http_path": request.url.path,
+            "http_status_code": status_code,
+            "error_type": exc.__class__.__name__,
+            "error_code": exc.__class__.__name__.upper(),
+            "stage": "error",
+        },
+    )
 
 
 def register_exception_handlers(app: FastAPI) -> None:
@@ -34,6 +54,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         exc: BadRequestError,
     ) -> JSONResponse:
         status_code = status.HTTP_400_BAD_REQUEST
+        _log_exception(request, exc, status_code)
         return JSONResponse(
             status_code=status_code,
             content=_error_body(
@@ -50,6 +71,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         exc: NotFoundError,
     ) -> JSONResponse:
         status_code = status.HTTP_404_NOT_FOUND
+        _log_exception(request, exc, status_code)
         return JSONResponse(
             status_code=status_code,
             content=_error_body(
@@ -66,6 +88,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         exc: InferSQLError,
     ) -> JSONResponse:
         status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        _log_exception(request, exc, status_code)
         return JSONResponse(
             status_code=status_code,
             content=_error_body(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import pyarrow as pa
 
 from app.core.catalog.registry import DatasetNotFoundError, DatasetRegistry
@@ -14,6 +16,9 @@ from app.core.exceptions import (
 from app.core.settings import Settings
 from app.services.query_compiler import QueryCompiler
 from app.services.query_runner import QueryRunner
+
+
+logger = logging.getLogger(__name__)
 
 
 class QueryService:
@@ -36,6 +41,15 @@ class QueryService:
 
     def validate(self, sql: str, request_id: str | None = None, debug: bool = False):
         normalized_sql = " ".join(sql.strip().split())
+
+        logger.info(
+            "validating query",
+            extra={
+                "stage": "validate",
+                "dataset": None,
+            },
+        )
+
         expression = self.query_parser.parse(normalized_sql)
         summary = self.query_parser.summarize(normalized_sql)
 
@@ -54,6 +68,15 @@ class QueryService:
         ) as exc:
             is_valid = False
             errors.append(str(exc))
+
+            logger.info(
+                "query validation failed",
+                extra={
+                    "stage": "validate",
+                    "dataset": summary["tables"][0] if summary["tables"] else None,
+                    "error_code": exc.__class__.__name__.upper(),
+                },
+            )
 
         response = {
             "sql": sql,
@@ -78,8 +101,21 @@ class QueryService:
         return response
 
     def plan(self, sql: str, request_id: str | None = None, debug: bool = False):
+        logger.info(
+            "planning query",
+            extra={
+                "stage": "plan",
+                "dataset": None,
+            },
+        )
+
         self._validate_referenced_schema(sql)
         compiled = self.query_compiler.compile(sql)
+
+        dataset = None
+        scan_node = self._find_node(compiled.logical_plan, "Scan")
+        if scan_node is not None:
+            dataset = scan_node.details.get("table")
 
         response = {
             "sql": sql,
@@ -95,6 +131,14 @@ class QueryService:
             "logical_plan": compiled.logical_plan.model_dump(),
             "physical_plan": compiled.physical_plan.model_dump(),
         }
+
+        logger.info(
+            "query planned",
+            extra={
+                "stage": "plan",
+                "dataset": dataset,
+            },
+        )
 
         if debug:
             response["debug"] = {
@@ -112,6 +156,14 @@ class QueryService:
         limit: int = 100,
         offset: int = 0,
     ):
+        logger.info(
+            "executing query",
+            extra={
+                "stage": "execute",
+                "dataset": None,
+            },
+        )
+
         self._validate_referenced_schema(sql)
         compiled = self.query_compiler.compile(sql)
         result = self.query_runner.run(compiled.physical_plan)
@@ -119,11 +171,23 @@ class QueryService:
         total_rows = result.num_rows
         safe_offset = min(offset, total_rows)
         safe_limit = max(0, min(limit, total_rows - safe_offset))
-
         sliced = result.slice(safe_offset, safe_limit)
 
         rows = sliced.to_pylist()
         columns = list(sliced.column_names)
+
+        dataset = None
+        scan_node = self._find_node(compiled.logical_plan, "Scan")
+        if scan_node is not None:
+            dataset = scan_node.details.get("table")
+
+        logger.info(
+            "query executed",
+            extra={
+                "stage": "execute",
+                "dataset": dataset,
+            },
+        )
 
         response = {
             "sql": sql,
@@ -184,7 +248,7 @@ class QueryService:
         dataset_name = tables[0]
 
         try:
-            table = self.dataset_registry.get(dataset_name)
+            table = self.dataset_registry.get_table(dataset_name)
         except DatasetNotFoundError as exc:
             raise UnknownDatasetError(f"Unknown dataset '{dataset_name}'") from exc
 
@@ -197,3 +261,14 @@ class QueryService:
                 raise UnknownColumnError(
                     f"Unknown column '{column}' on dataset '{dataset_name}'"
                 )
+
+    def _find_node(self, node, node_type: str):
+        if node.node_type == node_type:
+            return node
+
+        for child in node.children:
+            match = self._find_node(child, node_type)
+            if match is not None:
+                return match
+
+        return None
