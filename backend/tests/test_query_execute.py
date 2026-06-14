@@ -1,4 +1,3 @@
-# tests/test_query_execute.py
 from fastapi.testclient import TestClient
 
 
@@ -30,9 +29,8 @@ def test_query_execute_rejects_non_select(client: TestClient) -> None:
     )
 
     assert response.status_code == 400
-    assert response.json() == {
-        "detail": "Only SELECT queries are supported right now",
-    }
+    assert response.json()["error"]["type"] == "UnsupportedQueryError"
+    assert response.json()["error"]["message"] == "Only SELECT queries are supported right now"
 
 
 def test_query_execute_rejects_unknown_column(client: TestClient) -> None:
@@ -42,9 +40,8 @@ def test_query_execute_rejects_unknown_column(client: TestClient) -> None:
     )
 
     assert response.status_code == 400
-    assert response.json() == {
-        "detail": "Unknown column 'nope' on dataset 'prices'",
-    }
+    assert response.json()["error"]["type"] == "UnknownColumnError"
+    assert response.json()["error"]["message"] == "Unknown column 'nope' on dataset 'prices'"
 
 
 def test_query_execute_rejects_unknown_dataset(client: TestClient) -> None:
@@ -53,5 +50,6 @@ def test_query_execute_rejects_unknown_dataset(client: TestClient) -> None:
         json={"sql": "SELECT symbol FROM missing_table LIMIT 5"},
     )
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Unknown dataset 'missing_table'"
+    assert response.status_code == 404
+    assert response.json()["error"]["type"] == "UnknownDatasetError"
+    assert response.json()["error"]["message"] == "Unknown dataset 'missing_table'"

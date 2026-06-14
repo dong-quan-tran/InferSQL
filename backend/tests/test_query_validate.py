@@ -1,4 +1,3 @@
-# tests/test_query_validate.py
 from fastapi.testclient import TestClient
 
 
@@ -67,7 +66,7 @@ def test_query_validate_rejects_blank_sql(client: TestClient) -> None:
 def test_query_validate_rejects_invalid_sql_syntax(client: TestClient) -> None:
     response = client.post("/query/validate", json={"sql": "SELECT FROM"})
     assert response.status_code == 400
-    assert response.json() == {"detail": "Invalid SQL syntax"}
+    assert response.json()["error"]["message"] == "Invalid SQL syntax"
 
 
 def test_query_validate_rejects_unknown_column(client: TestClient) -> None:
