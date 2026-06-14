@@ -20,8 +20,16 @@ class DatasetRegistry:
         except KeyError as exc:
             raise DatasetNotFoundError(f"Unknown dataset '{name}'") from exc
 
-    def get(self, name: str) -> pa.Table:
-        return self.get_table(name)
-    
+    def get_schema(self, name: str) -> pa.Schema:
+        return self.get_table(name).schema
+
+    def describe_table(self, name: str) -> dict:
+        schema = self.get_schema(name)
+        return {
+            "name": name,
+            "columns": [field.name for field in schema],
+            "types": {field.name: str(field.type) for field in schema},
+        }
+
     def list_tables(self) -> list[str]:
         return sorted(self._tables.keys())

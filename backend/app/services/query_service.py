@@ -14,6 +14,7 @@ from app.core.exceptions import (
     UnsupportedQueryError,
 )
 from app.core.settings import Settings
+from app.schemas.query import SchemaReferenceSummary, ValidationSummary
 from app.services.query_compiler import QueryCompiler
 from app.services.query_runner import QueryRunner
 
@@ -44,17 +45,22 @@ class QueryService:
 
         logger.info(
             "validating query",
-            extra={
-                "stage": "validate",
-                "dataset": None,
-            },
+            extra={"stage": "validate", "dataset": None},
         )
 
         expression = self.query_parser.parse(normalized_sql)
-        summary = self.query_parser.summarize(normalized_sql)
+        summary_dict = self.query_parser.summarize(normalized_sql)
 
-        errors: list[str] = []
-        is_valid = True
+        summary = ValidationSummary(
+            normalized_sql=normalized_sql,
+            query_type=summary_dict["query_type"],
+            tables=summary_dict["tables"],
+            columns=summary_dict["columns"],
+            has_where=summary_dict["has_where"],
+            has_group_by=summary_dict["has_group_by"],
+            has_order_by=summary_dict["has_order_by"],
+            has_limit=summary_dict["has_limit"],
+        )
 
         try:
             self.query_parser.validate_select_only(expression)
@@ -66,30 +72,30 @@ class QueryService:
             UnknownDatasetError,
             UnknownColumnError,
         ) as exc:
-            is_valid = False
-            errors.append(str(exc))
+            summary.is_valid = False
+            summary.errors.append(str(exc))
 
             logger.info(
                 "query validation failed",
                 extra={
                     "stage": "validate",
-                    "dataset": summary["tables"][0] if summary["tables"] else None,
+                    "dataset": summary.tables[0] if summary.tables else None,
                     "error_code": exc.__class__.__name__.upper(),
                 },
             )
 
         response = {
             "sql": sql,
-            "normalized_sql": normalized_sql,
-            "is_valid": is_valid,
-            "query_type": summary["query_type"],
-            "errors": errors,
-            "tables": summary["tables"],
-            "columns": summary["columns"],
-            "has_where": summary["has_where"],
-            "has_group_by": summary["has_group_by"],
-            "has_order_by": summary["has_order_by"],
-            "has_limit": summary["has_limit"],
+            "normalized_sql": summary.normalized_sql,
+            "is_valid": summary.is_valid,
+            "query_type": summary.query_type,
+            "errors": summary.errors,
+            "tables": summary.tables,
+            "columns": summary.columns,
+            "has_where": summary.has_where,
+            "has_group_by": summary.has_group_by,
+            "has_order_by": summary.has_order_by,
+            "has_limit": summary.has_limit,
         }
 
         if debug:
@@ -103,10 +109,7 @@ class QueryService:
     def plan(self, sql: str, request_id: str | None = None, debug: bool = False):
         logger.info(
             "planning query",
-            extra={
-                "stage": "plan",
-                "dataset": None,
-            },
+            extra={"stage": "plan", "dataset": None},
         )
 
         self._validate_referenced_schema(sql)
@@ -134,10 +137,7 @@ class QueryService:
 
         logger.info(
             "query planned",
-            extra={
-                "stage": "plan",
-                "dataset": dataset,
-            },
+            extra={"stage": "plan", "dataset": dataset},
         )
 
         if debug:
@@ -158,23 +158,16 @@ class QueryService:
     ):
         logger.info(
             "executing query",
-            extra={
-                "stage": "execute",
-                "dataset": None,
-            },
+            extra={"stage": "execute", "dataset": None},
         )
 
         self._validate_referenced_schema(sql)
         compiled = self.query_compiler.compile(sql)
-        result = self.query_runner.run(compiled.physical_plan)
-
-        total_rows = result.num_rows
-        safe_offset = min(offset, total_rows)
-        safe_limit = max(0, min(limit, total_rows - safe_offset))
-        sliced = result.slice(safe_offset, safe_limit)
-
-        rows = sliced.to_pylist()
-        columns = list(sliced.column_names)
+        execution_result = self.query_runner.run(
+            compiled.physical_plan,
+            limit=limit,
+            offset=offset,
+        )
 
         dataset = None
         scan_node = self._find_node(compiled.logical_plan, "Scan")
@@ -183,18 +176,15 @@ class QueryService:
 
         logger.info(
             "query executed",
-            extra={
-                "stage": "execute",
-                "dataset": dataset,
-            },
+            extra={"stage": "execute", "dataset": dataset},
         )
 
         response = {
             "sql": sql,
             "normalized_sql": compiled.normalized_sql,
-            "row_count": len(rows),
-            "columns": columns,
-            "rows": rows,
+            "row_count": execution_result.row_count,
+            "columns": execution_result.columns,
+            "rows": execution_result.rows,
             "logical_plan": compiled.logical_plan.model_dump(),
             "physical_plan": compiled.physical_plan.model_dump(),
         }
@@ -225,7 +215,7 @@ class QueryService:
         )
         self.dataset_registry.register_table("prices", prices)
 
-    def _validate_referenced_schema(self, sql: str) -> None:
+    def _validate_referenced_schema(self, sql: str) -> SchemaReferenceSummary:
         normalized_sql = " ".join(sql.strip().split())
         if not normalized_sql:
             raise EmptyQueryError("SQL must not be empty")
@@ -248,19 +238,26 @@ class QueryService:
         dataset_name = tables[0]
 
         try:
-            table = self.dataset_registry.get_table(dataset_name)
+            schema = self.dataset_registry.get_schema(dataset_name)
         except DatasetNotFoundError as exc:
             raise UnknownDatasetError(f"Unknown dataset '{dataset_name}'") from exc
 
-        available_columns = set(table.column_names)
+        available_columns = [field.name for field in schema]
+        available_column_set = set(available_columns)
 
         for column in columns:
             if column == "*":
                 continue
-            if column not in available_columns:
+            if column not in available_column_set:
                 raise UnknownColumnError(
                     f"Unknown column '{column}' on dataset '{dataset_name}'"
                 )
+
+        return SchemaReferenceSummary(
+            dataset_name=dataset_name,
+            columns=columns,
+            available_columns=available_columns,
+        )
 
     def _find_node(self, node, node_type: str):
         if node.node_type == node_type:

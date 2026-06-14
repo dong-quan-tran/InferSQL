@@ -43,6 +43,31 @@ class ErrorResponse(BaseModel):
     error: ErrorDetail
 
 
+class SchemaReferenceSummary(BaseModel):
+    dataset_name: str
+    columns: list[str]
+    available_columns: list[str]
+
+
+class ValidationSummary(BaseModel):
+    normalized_sql: str
+    query_type: str | None = None
+    tables: list[str] = Field(default_factory=list)
+    columns: list[str] = Field(default_factory=list)
+    has_where: bool = False
+    has_group_by: bool = False
+    has_order_by: bool = False
+    has_limit: bool = False
+    is_valid: bool = True
+    errors: list[str] = Field(default_factory=list)
+
+
+class ExecutionResult(BaseModel):
+    row_count: int
+    columns: list[str]
+    rows: list[dict[str, Any]]
+
+
 class QueryValidationResponse(BaseModel):
     sql: str
     normalized_sql: str
