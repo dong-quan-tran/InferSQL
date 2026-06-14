@@ -1,27 +1,24 @@
-# app/core/catalog/registry.py
 from __future__ import annotations
-
-from dataclasses import dataclass, field
 
 import pyarrow as pa
 
 
-class DatasetNotFoundError(KeyError):
+class DatasetNotFoundError(Exception):
     pass
 
 
-@dataclass
 class DatasetRegistry:
-    _tables: dict[str, pa.Table] = field(default_factory=dict)
+    def __init__(self) -> None:
+        self._tables: dict[str, pa.Table] = {}
 
     def register_table(self, name: str, table: pa.Table) -> None:
-        self._tables[name.lower()] = table
+        self._tables[name] = table
 
     def get_table(self, name: str) -> pa.Table:
-        key = name.lower()
-        if key not in self._tables:
-            raise DatasetNotFoundError(f"Dataset '{name}' is not registered")
-        return self._tables[key]
+        try:
+            return self._tables[name]
+        except KeyError as exc:
+            raise DatasetNotFoundError(f"Unknown dataset '{name}'") from exc
 
-    def list_tables(self) -> list[str]:
-        return sorted(self._tables.keys())
+    def get(self, name: str) -> pa.Table:
+        return self.get_table(name)
