@@ -1,7 +1,6 @@
-# app/services/query_runner.py
 from __future__ import annotations
 
-from app.core.catalog import DatasetRegistry
+from app.core.catalog.registry import DatasetRegistry
 from app.core.engine.executor.service import QueryExecutor
 
 

@@ -15,9 +15,13 @@ class CompiledQuery:
 
 
 class QueryCompiler:
-    def __init__(self) -> None:
-        self.query_parser = QueryParser()
-        self.physical_planner = PhysicalPlanner()
+    def __init__(
+        self,
+        query_parser: QueryParser,
+        physical_planner: PhysicalPlanner,
+    ) -> None:
+        self.query_parser = query_parser
+        self.physical_planner = physical_planner
 
     def compile(self, sql: str) -> CompiledQuery:
         normalized_sql = " ".join(sql.strip().split())

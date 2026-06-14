@@ -22,3 +22,6 @@ class DatasetRegistry:
 
     def get(self, name: str) -> pa.Table:
         return self.get_table(name)
+    
+    def list_tables(self) -> list[str]:
+        return sorted(self._tables.keys())

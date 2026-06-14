@@ -11,20 +11,27 @@ from app.core.exceptions import (
     UnknownDatasetError,
     UnsupportedQueryError,
 )
-from app.core.settings import get_settings
+from app.core.settings import Settings
 from app.services.query_compiler import QueryCompiler
 from app.services.query_runner import QueryRunner
 
 
 class QueryService:
-    def __init__(self) -> None:
-        self.settings = get_settings()
-        self.dataset_registry = DatasetRegistry()
-        self.query_parser = QueryParser()
-        self.query_compiler = QueryCompiler()
-        self.query_runner = QueryRunner(self.dataset_registry)
+    def __init__(
+        self,
+        settings: Settings,
+        dataset_registry: DatasetRegistry,
+        query_parser: QueryParser,
+        query_compiler: QueryCompiler,
+        query_runner: QueryRunner,
+    ) -> None:
+        self.settings = settings
+        self.dataset_registry = dataset_registry
+        self.query_parser = query_parser
+        self.query_compiler = query_compiler
+        self.query_runner = query_runner
 
-        if self.settings.seed_demo_data:
+        if self.settings.seed_demo_data and "prices" not in self.dataset_registry.list_tables():
             self._seed_demo_data()
 
     def validate(self, sql: str, request_id: str | None = None, debug: bool = False):
@@ -64,7 +71,7 @@ class QueryService:
 
         if debug:
             response["debug"] = {
-                "request_id": request_id,
+                "request_id": request_id or "unknown",
                 "total_ms": 0.0,
             }
 
@@ -91,7 +98,7 @@ class QueryService:
 
         if debug:
             response["debug"] = {
-                "request_id": request_id,
+                "request_id": request_id or "unknown",
                 "total_ms": 0.0,
             }
 
@@ -130,7 +137,7 @@ class QueryService:
 
         if debug:
             response["debug"] = {
-                "request_id": request_id,
+                "request_id": request_id or "unknown",
                 "total_ms": 0.0,
             }
 
