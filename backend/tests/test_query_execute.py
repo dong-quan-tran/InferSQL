@@ -45,3 +45,13 @@ def test_query_execute_rejects_unknown_column(client: TestClient) -> None:
     assert response.json() == {
         "detail": "Unknown column 'nope' on dataset 'prices'",
     }
+
+
+def test_query_execute_rejects_unknown_dataset(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={"sql": "SELECT symbol FROM missing_table LIMIT 5"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Unknown dataset 'missing_table'"
