@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pyarrow as pa
 
-from app.core.catalog.registry import DatasetRegistry
+from app.core.catalog.registry import DatasetNotFoundError, DatasetRegistry
 from app.core.engine.parser import QueryParser
 from app.core.settings import get_settings
 from app.services.query_compiler import QueryCompiler
@@ -34,6 +34,13 @@ class QueryService:
             is_valid = False
             errors.append(str(exc))
 
+        if is_valid:
+            try:
+                self._validate_referenced_schema(normalized_sql)
+            except ValueError as exc:
+                is_valid = False
+                errors.append(str(exc))
+
         response = {
             "sql": sql,
             "normalized_sql": normalized_sql,
@@ -57,7 +64,7 @@ class QueryService:
         return response
 
     def plan(self, sql: str, request_id: str | None = None, debug: bool = False):
-        self._validate_referenced_columns(sql)
+        self._validate_referenced_schema(sql)
         compiled = self.query_compiler.compile(sql)
 
         response = {
@@ -80,7 +87,7 @@ class QueryService:
             response["debug"] = {"request_id": request_id}
 
         return response
-    
+
     def execute(
         self,
         sql: str,
@@ -89,12 +96,11 @@ class QueryService:
         limit: int = 100,
         offset: int = 0,
     ):
-        self._validate_referenced_columns(sql)
+        self._validate_referenced_schema(sql)
         compiled = self.query_compiler.compile(sql)
         result = self.query_runner.run(compiled.physical_plan)
 
         total_rows = result.num_rows
-        # Clamp offset to total_rows so slice() never errors
         safe_offset = min(offset, total_rows)
         safe_limit = max(0, min(limit, total_rows - safe_offset))
 
@@ -150,24 +156,33 @@ class QueryService:
         )
         self.dataset_registry.register_table("prices", prices)
 
-    def _validate_referenced_columns(self, sql: str) -> None:
+    def _validate_referenced_schema(self, sql: str) -> None:
+        expression = self.query_parser.parse(sql)
+        self.query_parser.validate_select_only(expression)
+
         summary = self.query_parser.summarize(sql)
         tables = summary["tables"]
         columns = summary["columns"]
 
         if not tables:
-            raise ValueError("Query must reference a table")
+            raise ValueError("Query must reference a dataset")
 
         if len(tables) > 1:
             raise ValueError("Only single-table queries are supported right now")
 
-        table_name = tables[0]
-        table = self.dataset_registry.get_table(table_name)
+        dataset_name = tables[0]
+
+        try:
+            table = self.dataset_registry.get(dataset_name)
+        except DatasetNotFoundError as exc:
+            raise ValueError(f"Unknown dataset '{dataset_name}'") from exc
+
         available_columns = set(table.column_names)
 
         for column in columns:
-            normalized_column = column.split(".")[-1]
-            if normalized_column not in available_columns:
+            if column == "*":
+                continue
+            if column not in available_columns:
                 raise ValueError(
-                    f"Unknown column '{normalized_column}' on dataset '{table_name}'"
+                    f"Unknown column '{column}' on dataset '{dataset_name}'"
                 )
