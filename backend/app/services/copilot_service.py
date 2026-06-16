@@ -9,8 +9,10 @@ from app.schemas.copilot import (
     CopilotSqlCandidate,
     CopilotValidationResult,
 )
+from app.services.copilot_schema_context import CopilotSchemaContextBuilder
 from app.services.llm.base import LLMProvider
 from app.services.query_service import QueryService
+
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +29,7 @@ class CopilotService:
         self.query_service = query_service
         self.llm_provider = llm_provider
         self.max_retries = max_retries
+        self.schema_context_builder = CopilotSchemaContextBuilder(dataset_registry)
 
     def query(
         self,
@@ -122,38 +125,7 @@ class CopilotService:
         )
 
     def _build_schema_context(self) -> str:
-        parts: list[str] = []
-
-        for table_name in self.dataset_registry.list_tables():
-            description = self.dataset_registry.describe_table(
-                table_name,
-                include_samples=True,
-                sample_limit=3,
-            )
-
-            lines = [f"Table: {table_name}"]
-
-            if description.get("description"):
-                lines.append(f"Description: {description['description']}")
-
-            lines.append("Columns:")
-            for column_name in description["columns"]:
-                dtype = description["types"][column_name]
-                column_description = description["column_descriptions"].get(column_name)
-                sample_values = description.get("sample_values", {}).get(column_name, [])
-
-                column_line = f"- {column_name}: {dtype}"
-                if column_description:
-                    column_line += f" — {column_description}"
-                if sample_values:
-                    sample_text = ", ".join(repr(value) for value in sample_values)
-                    column_line += f" (examples: {sample_text})"
-
-                lines.append(column_line)
-
-            parts.append("\n".join(lines))
-
-        return "\n\n".join(parts)
+        return self.schema_context_builder.build()
 
     def _build_repair_prompt(
         self,
