@@ -9,6 +9,8 @@ from app.core.settings import Settings, get_settings
 from app.services.query_compiler import QueryCompiler
 from app.services.query_runner import QueryRunner
 from app.services.query_service import QueryService
+from app.services.copilot_service import CopilotService
+from app.services.llm.base import LLMProvider
 
 
 def get_settings_dependency() -> Settings:
@@ -37,3 +39,11 @@ def get_query_runner(request: Request) -> QueryRunner:
 
 def get_query_service(request: Request) -> QueryService:
     return request.app.state.query_service
+
+
+def get_llm_provider(request: Request) -> LLMProvider:
+    return request.app.state.llm_provider
+
+
+def get_copilot_service(request: Request) -> CopilotService:
+    return request.app.state.copilot_service

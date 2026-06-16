@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     log_json: bool = False
     seed_demo_data: bool = True
     console_span_exporter_enabled: bool = False
+    llm_provider: str = "ollama"
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "llama3.1:8b"
+    llm_temperature: float = 0.0
+    remote_llm_model: str = "gpt-4.1-mini"
+    remote_llm_api_key: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",

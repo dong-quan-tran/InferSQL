@@ -10,10 +10,12 @@ from app.core.engine.parser import QueryParser
 from app.core.engine.physical_planner import PhysicalPlanner
 from app.core.logging import configure_logging
 from app.core.settings import Settings, get_settings
+from app.services.copilot_service import CopilotService
+from app.services.llm.ollama_provider import OllamaLLMProvider
+from app.services.llm.remote_provider import RemoteLLMProvider
 from app.services.query_compiler import QueryCompiler
 from app.services.query_runner import QueryRunner
 from app.services.query_service import QueryService
-
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +39,24 @@ def build_query_service(settings: Settings) -> QueryService:
     )
 
 
-def bind_app_state(app: FastAPI, settings: Settings, query_service: QueryService) -> None:
+def build_llm_provider(settings: Settings):
+    if settings.llm_provider == "ollama":
+        return OllamaLLMProvider(
+            base_url=settings.ollama_base_url,
+            model=settings.ollama_model,
+            temperature=settings.llm_temperature,
+        )
+
+    return RemoteLLMProvider(model=settings.remote_llm_model)
+
+
+def bind_app_state(
+    app: FastAPI,
+    settings: Settings,
+    query_service: QueryService,
+    copilot_service: CopilotService,
+    llm_provider,
+) -> None:
     app.state.settings = settings
     app.state.dataset_registry = query_service.dataset_registry
     app.state.query_parser = query_service.query_parser
@@ -45,6 +64,8 @@ def bind_app_state(app: FastAPI, settings: Settings, query_service: QueryService
     app.state.query_compiler = query_service.query_compiler
     app.state.query_runner = query_service.query_runner
     app.state.query_service = query_service
+    app.state.llm_provider = llm_provider
+    app.state.copilot_service = copilot_service
 
 
 @asynccontextmanager
@@ -53,7 +74,20 @@ async def lifespan(app: FastAPI):
     configure_logging(json_logs=settings.log_json, log_level=settings.log_level)
 
     query_service = build_query_service(settings=settings)
-    bind_app_state(app, settings=settings, query_service=query_service)
+    llm_provider = build_llm_provider(settings=settings)
+    copilot_service = CopilotService(
+        dataset_registry=query_service.dataset_registry,
+        query_service=query_service,
+        llm_provider=llm_provider,
+    )
+
+    bind_app_state(
+        app,
+        settings=settings,
+        query_service=query_service,
+        copilot_service=copilot_service,
+        llm_provider=llm_provider,
+    )
 
     logger.info(
         "Starting %s env=%s",
@@ -62,6 +96,8 @@ async def lifespan(app: FastAPI):
         extra={
             "stage": "startup",
             "environment": settings.environment,
+            "llm_provider": settings.llm_provider,
+            "llm_model": getattr(llm_provider, "model_name", "unknown"),
         },
     )
 
@@ -74,5 +110,7 @@ async def lifespan(app: FastAPI):
         extra={
             "stage": "shutdown",
             "environment": settings.environment,
+            "llm_provider": settings.llm_provider,
+            "llm_model": getattr(llm_provider, "model_name", "unknown"),
         },
     )
