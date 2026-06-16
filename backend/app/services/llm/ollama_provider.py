@@ -42,10 +42,13 @@ class OllamaLLMProvider(LLMProvider):
             "- Do not invent tables or columns.\n"
             "- Keep SQL compact and executable.\n"
             "- confidence must be between 0 and 1.\n"
+            "- Map common business synonyms to actual schema names when supported by the schema context.\n"
+            "- Example: if a user says ticker and the schema has symbol, prefer symbol.\n"
         )
 
         user_prompt = (
             f"Schema context:\n{schema_context}\n\n"
+            f"{self._build_few_shot_examples()}\n\n"
             f"Question:\n{question}\n\n"
             "Return a JSON object matching this schema exactly:\n"
             f"{json.dumps(schema)}"
@@ -71,3 +74,67 @@ class OllamaLLMProvider(LLMProvider):
         content = payload["message"]["content"]
         data = json.loads(content)
         return CopilotSqlCandidate.model_validate(data)
+
+    def _build_few_shot_examples(self) -> str:
+        examples = [
+            {
+                "question": "Show one stock symbol",
+                "response": {
+                    "sql": "SELECT symbol FROM prices LIMIT 1",
+                    "assumptions": [],
+                    "referenced_tables": ["prices"],
+                    "referenced_columns": ["symbol"],
+                    "confidence": 0.95,
+                },
+            },
+            {
+                "question": "Show stock symbols and closing prices",
+                "response": {
+                    "sql": "SELECT symbol, close FROM prices LIMIT 5",
+                    "assumptions": [],
+                    "referenced_tables": ["prices"],
+                    "referenced_columns": ["symbol", "close"],
+                    "confidence": 0.96,
+                },
+            },
+            {
+                "question": "Show the closing price for MSFT",
+                "response": {
+                    "sql": "SELECT symbol, close FROM prices WHERE symbol = 'MSFT'",
+                    "assumptions": [],
+                    "referenced_tables": ["prices"],
+                    "referenced_columns": ["symbol", "close"],
+                    "confidence": 0.94,
+                },
+            },
+            {
+                "question": "Show stocks with close greater than 200",
+                "response": {
+                    "sql": "SELECT symbol, close FROM prices WHERE close > 200",
+                    "assumptions": [],
+                    "referenced_tables": ["prices"],
+                    "referenced_columns": ["symbol", "close"],
+                    "confidence": 0.93,
+                },
+            },
+            {
+                "question": "Show ticker and close",
+                "response": {
+                    "sql": "SELECT symbol, close FROM prices",
+                    "assumptions": ["Mapped ticker to symbol based on schema context."],
+                    "referenced_tables": ["prices"],
+                    "referenced_columns": ["symbol", "close"],
+                    "confidence": 0.84,
+                },
+            },
+        ]
+
+        lines = ["Examples:"]
+        for idx, example in enumerate(examples, start=1):
+            lines.append(f"Example {idx} question:")
+            lines.append(example["question"])
+            lines.append("Example output JSON:")
+            lines.append(json.dumps(example["response"]))
+            lines.append("")
+
+        return "\n".join(lines).strip()
