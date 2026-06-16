@@ -1,0 +1,99 @@
+[
+    {
+        "id": "select_symbol_limit",
+        "question": "Show one stock symbol",
+        "execute": false,
+        "expected_valid": true,
+        "expected_sql_contains": [
+            "SELECT",
+            "FROM prices",
+            "symbol"
+        ],
+        "expected_columns": [
+            "symbol"
+        ],
+        "max_attempts": 2
+    },
+    {
+        "id": "select_symbol_and_close",
+        "question": "Show stock symbols and closing prices",
+        "execute": true,
+        "expected_valid": true,
+        "expected_sql_contains": [
+            "SELECT",
+            "FROM prices",
+            "symbol",
+            "close"
+        ],
+        "expected_columns": [
+            "symbol",
+            "close"
+        ],
+        "expected_row_count": 2,
+        "max_attempts": 2
+    },
+    {
+        "id": "filter_by_symbol",
+        "question": "Show the closing price for MSFT",
+        "execute": true,
+        "expected_valid": true,
+        "expected_sql_contains": [
+            "SELECT",
+            "FROM prices",
+            "WHERE",
+            "symbol",
+            "MSFT"
+        ],
+        "expected_columns": [
+            "symbol",
+            "close"
+        ],
+        "expected_row_count": 1,
+        "max_attempts": 3
+    },
+    {
+        "id": "filter_by_close_threshold",
+        "question": "Show stocks with close greater than 200",
+        "execute": true,
+        "expected_valid": true,
+        "expected_sql_contains": [
+            "SELECT",
+            "FROM prices",
+            "WHERE",
+            "close",
+            "200"
+        ],
+        "expected_columns": [
+            "symbol",
+            "close"
+        ],
+        "expected_row_count": 2,
+        "max_attempts": 3
+    },
+    {
+        "id": "invalid_unknown_column_then_repair",
+        "question": "Show ticker and close",
+        "execute": false,
+        "expected_valid": true,
+        "expected_sql_contains": [
+            "SELECT",
+            "FROM prices"
+        ],
+        "expected_columns": [
+            "symbol",
+            "close"
+        ],
+        "max_attempts": 3
+    },
+    {
+        "id": "unsupported_multi_table_intent",
+        "question": "Join prices with fundamentals",
+        "execute": false,
+        "expected_valid": false,
+        "expected_error_any_of": [
+            "Unknown dataset",
+            "Only single-table queries are supported right now"
+        ],
+        "max_attempts": 3
+    }
+]
