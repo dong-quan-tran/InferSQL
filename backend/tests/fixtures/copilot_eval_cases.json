@@ -1,6 +1,7 @@
 [
     {
         "id": "select_symbol_limit",
+        "category": "simple_select",
         "question": "Show one stock symbol",
         "execute": false,
         "expected_valid": true,
@@ -16,6 +17,7 @@
     },
     {
         "id": "select_symbol_and_close",
+        "category": "simple_select",
         "question": "Show stock symbols and closing prices",
         "execute": true,
         "expected_valid": true,
@@ -34,6 +36,7 @@
     },
     {
         "id": "filter_by_symbol",
+        "category": "simple_select",
         "question": "Show the closing price for MSFT",
         "execute": true,
         "expected_valid": true,
@@ -53,6 +56,7 @@
     },
     {
         "id": "filter_by_close_threshold",
+        "category": "simple_select",
         "question": "Show stocks with close greater than 200",
         "execute": true,
         "expected_valid": true,
@@ -72,21 +76,75 @@
     },
     {
         "id": "invalid_unknown_column_then_repair",
+        "category": "synonym",
         "question": "Show ticker and close",
         "execute": false,
         "expected_valid": true,
         "expected_sql_contains": [
             "SELECT",
-            "FROM prices"
+            "FROM prices",
+            "symbol",
+            "close"
         ],
         "expected_columns": [
             "symbol",
             "close"
         ],
+        "expected_assumptions_contains": [
+            "Mapped ticker to symbol"
+        ],
+        "max_attempts": 3
+    },
+    {
+        "id": "invalid_price_synonym_then_repair",
+        "category": "synonym",
+        "question": "Show stock price for AAPL",
+        "execute": true,
+        "expected_valid": true,
+        "expected_sql_contains": [
+            "SELECT",
+            "FROM prices",
+            "WHERE",
+            "symbol",
+            "AAPL",
+            "close"
+        ],
+        "expected_columns": [
+            "close"
+        ],
+        "expected_row_count": 1,
+        "expected_assumptions_contains": [
+            "Mapped stock price to close"
+        ],
+        "max_attempts": 3
+    },
+    {
+        "id": "hallucinated_table_request",
+        "category": "hallucination",
+        "question": "Show volume from trades",
+        "execute": false,
+        "expected_valid": false,
+        "expected_error_any_of": [
+            "Unknown dataset",
+            "Generated SQL references unsupported dataset or column"
+        ],
+        "max_attempts": 3
+    },
+    {
+        "id": "hallucinated_column_request",
+        "category": "hallucination",
+        "question": "Show sector for each stock",
+        "execute": false,
+        "expected_valid": false,
+        "expected_error_any_of": [
+            "Unknown column",
+            "Generated SQL references unsupported dataset or column"
+        ],
         "max_attempts": 3
     },
     {
         "id": "unsupported_multi_table_intent",
+        "category": "unsupported_feature",
         "question": "Join prices with fundamentals",
         "execute": false,
         "expected_valid": false,
@@ -95,5 +153,67 @@
             "Only single-table queries are supported right now"
         ],
         "max_attempts": 3
+    },
+    {
+        "id": "unsupported_join_request",
+        "category": "unsupported_feature",
+        "question": "Join prices with trades and show symbol and volume",
+        "execute": false,
+        "expected_valid": false,
+        "expected_error_any_of": [
+            "Unknown dataset",
+            "Only single-table queries are supported right now"
+        ],
+        "max_attempts": 3
+    },
+    {
+        "id": "unsupported_aggregate_request",
+        "category": "unsupported_feature",
+        "question": "Count how many rows are in prices",
+        "execute": false,
+        "expected_valid": false,
+        "expected_error_any_of": [
+            "Unsupported SQL expression",
+            "Generated SQL does not match supported SQL subset"
+        ],
+        "max_attempts": 3
+    },
+    {
+        "id": "ambiguous_latest_stock_request",
+        "category": "ambiguous",
+        "question": "Show the latest stock",
+        "execute": false,
+        "expected_valid": true,
+        "expected_sql_contains": [
+            "SELECT",
+            "FROM prices",
+            "symbol"
+        ],
+        "expected_columns": [
+            "symbol"
+        ],
+        "expected_assumptions_contains": [
+            "Interpreted latest"
+        ],
+        "max_attempts": 2
+    },
+    {
+        "id": "ambiguous_best_performing_request",
+        "category": "ambiguous",
+        "question": "Show the best performing stock",
+        "execute": false,
+        "expected_valid": true,
+        "expected_sql_contains": [
+            "SELECT",
+            "FROM prices",
+            "symbol"
+        ],
+        "expected_columns": [
+            "symbol"
+        ],
+        "expected_assumptions_contains": [
+            "Could not determine best performing"
+        ],
+        "max_attempts": 2
     }
 ]
