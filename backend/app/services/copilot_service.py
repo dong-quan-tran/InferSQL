@@ -125,14 +125,35 @@ class CopilotService:
         parts: list[str] = []
 
         for table_name in self.dataset_registry.list_tables():
-            description = self.dataset_registry.describe_table(table_name)
-            columns = ", ".join(
-                f"{name}:{dtype}"
-                for name, dtype in description["types"].items()
+            description = self.dataset_registry.describe_table(
+                table_name,
+                include_samples=True,
+                sample_limit=3,
             )
-            parts.append(f"- {table_name}({columns})")
 
-        return "\n".join(parts)
+            lines = [f"Table: {table_name}"]
+
+            if description.get("description"):
+                lines.append(f"Description: {description['description']}")
+
+            lines.append("Columns:")
+            for column_name in description["columns"]:
+                dtype = description["types"][column_name]
+                column_description = description["column_descriptions"].get(column_name)
+                sample_values = description.get("sample_values", {}).get(column_name, [])
+
+                column_line = f"- {column_name}: {dtype}"
+                if column_description:
+                    column_line += f" — {column_description}"
+                if sample_values:
+                    sample_text = ", ".join(repr(value) for value in sample_values)
+                    column_line += f" (examples: {sample_text})"
+
+                lines.append(column_line)
+
+            parts.append("\n".join(lines))
+
+        return "\n\n".join(parts)
 
     def _build_repair_prompt(
         self,
