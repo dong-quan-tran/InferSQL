@@ -207,14 +207,30 @@ class QueryService:
         return self.execute(sql=sql)
 
     def _seed_demo_data(self) -> None:
+        from app.core.catalog.registry import DatasetColumnMetadata, DatasetMetadata
+
         prices = pa.table(
             {
                 "symbol": ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN"],
                 "close": [189.12, 425.27, 1210.54, 176.33, 182.41],
             }
         )
-        self.dataset_registry.register_table("prices", prices)
-
+        self.dataset_registry.register_table(
+            "prices",
+            prices,
+            metadata=DatasetMetadata(
+                description="Daily security prices for a small demo universe of stocks.",
+                columns={
+                    "symbol": DatasetColumnMetadata(
+                        description="Ticker symbol such as AAPL, MSFT, NVDA, GOOGL, or AMZN."
+                    ),
+                    "close": DatasetColumnMetadata(
+                        description="Closing price for the security on the row."
+                    ),
+                },
+            ),
+        )
+        
     def _validate_referenced_schema(self, sql: str) -> SchemaReferenceSummary:
         normalized_sql = " ".join(sql.strip().split())
         if not normalized_sql:
