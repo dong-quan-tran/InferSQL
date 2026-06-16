@@ -25,11 +25,13 @@ def test_get_schema_and_describe_table() -> None:
     assert schema.names == ["symbol", "close"]
     assert description == {
         "name": "prices",
+        "description": None,
         "columns": ["symbol", "close"],
         "types": {
             "symbol": "string",
             "close": "double",
         },
+        "column_descriptions": {},
     }
 
 
