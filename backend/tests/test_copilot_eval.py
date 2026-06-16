@@ -59,8 +59,9 @@ class EvalQueryService:
 
     def validate(self, sql: str, request_id: str | None = None, debug: bool = False) -> dict:
         normalized_sql = " ".join(sql.strip().split())
+        upper_sql = normalized_sql.upper()
 
-        if "fundamentals" in sql:
+        if " FROM FUNDAMENTALS" in upper_sql or " JOIN FUNDAMENTALS" in upper_sql:
             return {
                 "sql": sql,
                 "normalized_sql": normalized_sql,
@@ -69,13 +70,28 @@ class EvalQueryService:
                 "errors": ["Unknown dataset 'fundamentals'"],
                 "tables": ["fundamentals"],
                 "columns": ["*"],
-                "has_where": False,
-                "has_group_by": False,
-                "has_order_by": False,
-                "has_limit": False,
+                "has_where": "WHERE" in upper_sql,
+                "has_group_by": "GROUP BY" in upper_sql,
+                "has_order_by": "ORDER BY" in upper_sql,
+                "has_limit": "LIMIT" in upper_sql,
             }
 
-        if "ticker" in sql:
+        if " FROM TRADES" in upper_sql or " JOIN TRADES" in upper_sql:
+            return {
+                "sql": sql,
+                "normalized_sql": normalized_sql,
+                "is_valid": False,
+                "query_type": "SELECT",
+                "errors": ["Unknown dataset 'trades'"],
+                "tables": ["trades"],
+                "columns": ["volume"],
+                "has_where": "WHERE" in upper_sql,
+                "has_group_by": "GROUP BY" in upper_sql,
+                "has_order_by": "ORDER BY" in upper_sql,
+                "has_limit": "LIMIT" in upper_sql,
+            }
+
+        if "TICKER" in upper_sql:
             return {
                 "sql": sql,
                 "normalized_sql": normalized_sql,
@@ -84,17 +100,78 @@ class EvalQueryService:
                 "errors": ["Unknown column 'ticker' on dataset 'prices'"],
                 "tables": ["prices"],
                 "columns": ["ticker", "close"],
-                "has_where": False,
-                "has_group_by": False,
-                "has_order_by": False,
-                "has_limit": False,
+                "has_where": "WHERE" in upper_sql,
+                "has_group_by": "GROUP BY" in upper_sql,
+                "has_order_by": "ORDER BY" in upper_sql,
+                "has_limit": "LIMIT" in upper_sql,
             }
 
-        upper_sql = normalized_sql.upper()
+        if "SELECT PRICE " in upper_sql or "SELECT PRICE," in upper_sql or " PRICE FROM " in upper_sql:
+            return {
+                "sql": sql,
+                "normalized_sql": normalized_sql,
+                "is_valid": False,
+                "query_type": "SELECT",
+                "errors": ["Unknown column 'price' on dataset 'prices'"],
+                "tables": ["prices"],
+                "columns": ["price", "symbol"],
+                "has_where": "WHERE" in upper_sql,
+                "has_group_by": "GROUP BY" in upper_sql,
+                "has_order_by": "ORDER BY" in upper_sql,
+                "has_limit": "LIMIT" in upper_sql,
+            }
+
+        if "SECTOR" in upper_sql:
+            return {
+                "sql": sql,
+                "normalized_sql": normalized_sql,
+                "is_valid": False,
+                "query_type": "SELECT",
+                "errors": ["Unknown column 'sector' on dataset 'prices'"],
+                "tables": ["prices"],
+                "columns": ["sector"],
+                "has_where": "WHERE" in upper_sql,
+                "has_group_by": "GROUP BY" in upper_sql,
+                "has_order_by": "ORDER BY" in upper_sql,
+                "has_limit": "LIMIT" in upper_sql,
+            }
+
+        if "JOIN" in upper_sql:
+            return {
+                "sql": sql,
+                "normalized_sql": normalized_sql,
+                "is_valid": False,
+                "query_type": "SELECT",
+                "errors": ["Only single-table queries are supported right now"],
+                "tables": ["prices", "fundamentals"],
+                "columns": ["*"],
+                "has_where": "WHERE" in upper_sql,
+                "has_group_by": "GROUP BY" in upper_sql,
+                "has_order_by": "ORDER BY" in upper_sql,
+                "has_limit": "LIMIT" in upper_sql,
+            }
+
+        if "COUNT(" in upper_sql or "SUM(" in upper_sql or "AVG(" in upper_sql:
+            return {
+                "sql": sql,
+                "normalized_sql": normalized_sql,
+                "is_valid": False,
+                "query_type": "SELECT",
+                "errors": ["Unsupported SQL expression"],
+                "tables": ["prices"],
+                "columns": ["*"],
+                "has_where": "WHERE" in upper_sql,
+                "has_group_by": "GROUP BY" in upper_sql,
+                "has_order_by": "ORDER BY" in upper_sql,
+                "has_limit": "LIMIT" in upper_sql,
+            }
+
         columns: list[str]
-        if "SYMBOL, CLOSE" in upper_sql or ("SYMBOL" in upper_sql and "CLOSE" in upper_sql):
+        if "SELECT SYMBOL, CLOSE " in upper_sql or "SELECT SYMBOL, CLOSE FROM " in upper_sql:
             columns = ["symbol", "close"]
-        elif "SYMBOL" in upper_sql:
+        elif "SELECT CLOSE " in upper_sql or "SELECT CLOSE FROM " in upper_sql or "SELECT CLOSE," in upper_sql:
+            columns = ["close"]
+        elif "SELECT SYMBOL " in upper_sql or "SELECT SYMBOL FROM " in upper_sql or "SELECT SYMBOL," in upper_sql:
             columns = ["symbol"]
         else:
             columns = ["close"]
@@ -108,8 +185,8 @@ class EvalQueryService:
             "tables": ["prices"],
             "columns": columns,
             "has_where": "WHERE" in upper_sql,
-            "has_group_by": False,
-            "has_order_by": False,
+            "has_group_by": "GROUP BY" in upper_sql,
+            "has_order_by": "ORDER BY" in upper_sql,
             "has_limit": "LIMIT" in upper_sql,
         }
 
@@ -118,8 +195,20 @@ class EvalQueryService:
         self.executed_sql.append(normalized_sql)
 
         upper_sql = normalized_sql.upper()
-        if "WHERE SYMBOL = 'MSFT'" in upper_sql:
+        if "SELECT SYMBOL, CLOSE " in upper_sql and "WHERE SYMBOL = 'MSFT'" in upper_sql:
             rows = [{"symbol": "MSFT", "close": 425.27}]
+            columns = ["symbol", "close"]
+        elif "SELECT CLOSE " in upper_sql and "WHERE SYMBOL = 'AAPL'" in upper_sql:
+            rows = [{"close": 189.12}]
+            columns = ["close"]
+        elif "SELECT SYMBOL, CLOSE " in upper_sql and "WHERE SYMBOL = 'AAPL'" in upper_sql:
+            rows = [{"symbol": "AAPL", "close": 189.12}]
+            columns = ["symbol", "close"]
+        elif "WHERE CLOSE > 200" in upper_sql:
+            rows = [
+                {"symbol": "MSFT", "close": 425.27},
+                {"symbol": "NVDA", "close": 1210.54},
+            ]
             columns = ["symbol", "close"]
         elif "WHERE CLOSE > 200" in upper_sql:
             rows = [
@@ -227,6 +316,68 @@ def build_candidates_by_question() -> dict[str, list[CopilotSqlCandidate]]:
                 confidence=0.82,
             ),
         ],
+        "Show stock price for AAPL": [
+            CopilotSqlCandidate(
+                sql="SELECT price FROM prices WHERE symbol = 'AAPL'",
+                assumptions=["Assumed price was a valid column name."],
+                referenced_tables=["prices"],
+                referenced_columns=["price", "symbol"],
+                confidence=0.41,
+            ),
+            CopilotSqlCandidate(
+                sql="SELECT close FROM prices WHERE symbol = 'AAPL'",
+                assumptions=["Mapped stock price to close based on schema context."],
+                referenced_tables=["prices"],
+                referenced_columns=["close", "symbol"],
+                confidence=0.79,
+            ),
+        ],
+        "Show volume from trades": [
+            CopilotSqlCandidate(
+                sql="SELECT volume FROM trades",
+                assumptions=["Assumed a trades dataset exists."],
+                referenced_tables=["trades"],
+                referenced_columns=["volume"],
+                confidence=0.22,
+            ),
+            CopilotSqlCandidate(
+                sql="SELECT volume FROM trades",
+                assumptions=["Retried but kept the unavailable dataset."],
+                referenced_tables=["trades"],
+                referenced_columns=["volume"],
+                confidence=0.19,
+            ),
+            CopilotSqlCandidate(
+                sql="SELECT volume FROM trades",
+                assumptions=["Retried again without resolving the missing dataset."],
+                referenced_tables=["trades"],
+                referenced_columns=["volume"],
+                confidence=0.15,
+            ),
+        ],
+        "Show sector for each stock": [
+            CopilotSqlCandidate(
+                sql="SELECT sector FROM prices",
+                assumptions=["Assumed sector was part of the dataset."],
+                referenced_tables=["prices"],
+                referenced_columns=["sector"],
+                confidence=0.26,
+            ),
+            CopilotSqlCandidate(
+                sql="SELECT sector FROM prices",
+                assumptions=["Retried but kept the unavailable column."],
+                referenced_tables=["prices"],
+                referenced_columns=["sector"],
+                confidence=0.21,
+            ),
+            CopilotSqlCandidate(
+                sql="SELECT sector FROM prices",
+                assumptions=["Retried again without resolving the missing column."],
+                referenced_tables=["prices"],
+                referenced_columns=["sector"],
+                confidence=0.17,
+            ),
+        ],
         "Join prices with fundamentals": [
             CopilotSqlCandidate(
                 sql="SELECT * FROM fundamentals",
@@ -249,6 +400,70 @@ def build_candidates_by_question() -> dict[str, list[CopilotSqlCandidate]]:
                 referenced_columns=["*"],
                 confidence=0.14,
             ),
+        ],
+        "Join prices with trades and show symbol and volume": [
+            CopilotSqlCandidate(
+                sql="SELECT prices.symbol, trades.volume FROM prices JOIN trades ON prices.symbol = trades.symbol",
+                assumptions=["Assumed join support and a trades dataset exist."],
+                referenced_tables=["prices", "trades"],
+                referenced_columns=["symbol", "volume"],
+                confidence=0.24,
+            ),
+            CopilotSqlCandidate(
+                sql="SELECT prices.symbol, trades.volume FROM prices JOIN trades ON prices.symbol = trades.symbol",
+                assumptions=["Retried but kept the unsupported join."],
+                referenced_tables=["prices", "trades"],
+                referenced_columns=["symbol", "volume"],
+                confidence=0.19,
+            ),
+            CopilotSqlCandidate(
+                sql="SELECT prices.symbol, trades.volume FROM prices JOIN trades ON prices.symbol = trades.symbol",
+                assumptions=["Retried again without resolving unsupported join behavior."],
+                referenced_tables=["prices", "trades"],
+                referenced_columns=["symbol", "volume"],
+                confidence=0.13,
+            ),
+        ],
+        "Count how many rows are in prices": [
+            CopilotSqlCandidate(
+                sql="SELECT COUNT(*) FROM prices",
+                assumptions=["Assumed aggregation support was available."],
+                referenced_tables=["prices"],
+                referenced_columns=["*"],
+                confidence=0.38,
+            ),
+            CopilotSqlCandidate(
+                sql="SELECT COUNT(*) FROM prices",
+                assumptions=["Retried but kept the unsupported aggregate."],
+                referenced_tables=["prices"],
+                referenced_columns=["*"],
+                confidence=0.29,
+            ),
+            CopilotSqlCandidate(
+                sql="SELECT COUNT(*) FROM prices",
+                assumptions=["Retried again without resolving aggregate support."],
+                referenced_tables=["prices"],
+                referenced_columns=["*"],
+                confidence=0.22,
+            ),
+        ],
+        "Show the latest stock": [
+            CopilotSqlCandidate(
+                sql="SELECT symbol FROM prices LIMIT 1",
+                assumptions=["Interpreted latest as any single available stock because no time column exists."],
+                referenced_tables=["prices"],
+                referenced_columns=["symbol"],
+                confidence=0.51,
+            )
+        ],
+        "Show the best performing stock": [
+            CopilotSqlCandidate(
+                sql="SELECT symbol FROM prices",
+                assumptions=["Could not determine best performing without a comparison metric or time context."],
+                referenced_tables=["prices"],
+                referenced_columns=["symbol"],
+                confidence=0.28,
+            )
         ],
     }
 
@@ -277,6 +492,12 @@ def test_copilot_eval_cases(case: dict) -> None:
     if case["expected_valid"]:
         assert result.validation.errors == []
         assert result.validation.columns == case["expected_columns"]
+
+        if "expected_assumptions_contains" in case:
+            for expected_assumption in case["expected_assumptions_contains"]:
+                assert any(
+                    expected_assumption in assumption for assumption in result.candidate.assumptions
+                )
 
         if case["execute"]:
             assert result.execution is not None
