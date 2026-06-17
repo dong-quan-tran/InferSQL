@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 
 from app.core.catalog.registry import DatasetRegistry
+from app.services.llm.prompt_assets import CANONICAL_SYNONYM_RULES
 
 
 _TOKEN_RE = re.compile(r"[a-z0-9_]+")
@@ -23,6 +24,18 @@ def _tokenize(text: str) -> set[str]:
     return raw_tokens | normalized
 
 
+def _expand_question_tokens(question: str) -> set[str]:
+    tokens = _tokenize(question)
+    lowered_question = question.lower()
+
+    for source, target in CANONICAL_SYNONYM_RULES.items():
+        if source in lowered_question:
+            tokens |= _tokenize(source)
+            tokens |= _tokenize(target)
+
+    return tokens
+
+
 @dataclass(frozen=True)
 class SchemaSelectionResult:
     table_name: str
@@ -39,7 +52,7 @@ class CopilotSchemaSelector:
         self.max_tables = max_tables
 
     def select_tables(self, question: str) -> list[str]:
-        question_tokens = _tokenize(question)
+        question_tokens = _expand_question_tokens(question)
         scored_results: list[SchemaSelectionResult] = []
 
         for table_name in self.dataset_registry.list_tables():

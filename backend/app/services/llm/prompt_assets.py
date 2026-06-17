@@ -92,6 +92,17 @@ FEW_SHOT_EXAMPLES: list[dict] = [
 ]
 
 
+def canonical_aliases_by_column() -> dict[str, list[str]]:
+    aliases: dict[str, list[str]] = {}
+    for source, target in CANONICAL_SYNONYM_RULES.items():
+        aliases.setdefault(target, []).append(source)
+
+    for column_name in aliases:
+        aliases[column_name] = sorted(aliases[column_name])
+
+    return aliases
+
+
 def build_synonym_guidance() -> str:
     lines = ["Canonical business-term mappings:"]
     for source, target in sorted(CANONICAL_SYNONYM_RULES.items()):

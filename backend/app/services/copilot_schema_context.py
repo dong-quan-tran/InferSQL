@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.core.catalog.registry import DatasetRegistry
+from app.services.llm.prompt_assets import canonical_aliases_by_column
 
 
 class CopilotSchemaContextBuilder:
@@ -13,6 +14,7 @@ class CopilotSchemaContextBuilder:
         self.dataset_registry = dataset_registry
         self.include_samples = include_samples
         self.sample_limit = sample_limit
+        self.column_aliases = canonical_aliases_by_column()
 
     def build(self, table_names: list[str] | None = None) -> str:
         parts: list[str] = []
@@ -36,10 +38,13 @@ class CopilotSchemaContextBuilder:
                 dtype = description["types"][column_name]
                 column_description = description["column_descriptions"].get(column_name)
                 sample_values = description.get("sample_values", {}).get(column_name, [])
+                aliases = self.column_aliases.get(column_name, [])
 
                 column_line = f"- {column_name}: {dtype}"
                 if column_description:
                     column_line += f" — {column_description}"
+                if aliases:
+                    column_line += f" (aliases: {', '.join(aliases)})"
                 if sample_values:
                     sample_text = ", ".join(repr(value) for value in sample_values)
                     column_line += f" (examples: {sample_text})"
