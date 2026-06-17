@@ -518,3 +518,92 @@ def test_copilot_eval_cases(case: dict) -> None:
                 any(expected_error in error for error in result.validation.errors)
                 for expected_error in case["expected_error_any_of"]
             )
+
+    
+from app.services.copilot_eval_summary import (
+    CopilotEvalCaseResult,
+    assert_eval_thresholds,
+    build_eval_summary,
+)
+
+
+def test_copilot_eval_suite_summary() -> None:
+    provider = EvalLLMProvider(build_candidates_by_question())
+    query_service = EvalQueryService()
+    service = CopilotService(
+        dataset_registry=build_registry(),
+        query_service=query_service,
+        llm_provider=provider,
+        max_retries=2,
+    )
+
+    results: list[CopilotEvalCaseResult] = []
+
+    for case in EVAL_CASES:
+        eval_result = service.query(case["question"], execute=case["execute"])
+
+        passed = True
+        try:
+            # Re-run the same assertions used in the parametrized test
+            assert eval_result.validation.is_valid is case["expected_valid"]
+            assert eval_result.attempts <= case["max_attempts"]
+
+            if "expected_sql_contains" in case:
+                normalized_sql = eval_result.validation.normalized_sql
+                for fragment in case["expected_sql_contains"]:
+                    assert fragment in normalized_sql
+
+            if case["expected_valid"]:
+                assert eval_result.validation.errors == []
+                assert eval_result.validation.columns == case["expected_columns"]
+                if "expected_assumptions_contains" in case:
+                    for expected_assumption in case["expected_assumptions_contains"]:
+                        assert any(
+                            expected_assumption in assumption
+                            for assumption in eval_result.candidate.assumptions
+                        )
+                if case["execute"]:
+                    assert eval_result.execution is not None
+                    assert eval_result.execution["columns"] == case["expected_columns"]
+                    assert eval_result.execution["row_count"] == case["expected_row_count"]
+                else:
+                    assert eval_result.execution is None
+            else:
+                assert eval_result.execution is None
+                assert eval_result.validation.errors
+                if "expected_error_contains" in case:
+                    for expected_error in case["expected_error_contains"]:
+                        assert any(
+                            expected_error in error
+                            for error in eval_result.validation.errors
+                        )
+                if "expected_error_any_of" in case:
+                    assert any(
+                        any(expected_error in error for error in eval_result.validation.errors)
+                        for expected_error in case["expected_error_any_of"]
+                    )
+        except AssertionError:
+            passed = False
+
+        results.append(
+            CopilotEvalCaseResult(
+                id=case["id"],
+                category=case.get("category", "uncategorized"),
+                passed=passed,
+                details=None,
+            )
+        )
+
+    summary = build_eval_summary(results)
+
+    assert_eval_thresholds(
+        summary,
+        minimum_overall_pass_rate=0.9,
+        minimum_category_pass_rates={
+            "simple_select": 1.0,
+            "synonym": 0.8,
+            "hallucination": 1.0,
+            "unsupported_feature": 1.0,
+            "ambiguous": 1.0,
+        },
+    )
