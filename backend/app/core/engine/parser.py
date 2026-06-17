@@ -105,6 +105,32 @@ class QueryParser:
             children=[current],
         )
 
+        order = expression.args.get("order")
+        if order is not None and order.expressions:
+            sort_keys = []
+            for ordered in order.expressions:
+                if not isinstance(ordered, exp.Ordered):
+                    continue
+
+                sort_expr = ordered.this
+                if isinstance(sort_expr, exp.Column):
+                    column_name = sort_expr.name
+                else:
+                    column_name = sort_expr.sql()
+
+                sort_keys.append(
+                    {
+                        "column": column_name,
+                        "direction": "DESC" if ordered.args.get("desc") else "ASC",
+                    }
+                )
+
+            current = PlanNode(
+                node_type="Sort",
+                details={"keys": sort_keys},
+                children=[current],
+            )
+
         limit = expression.args.get("limit")
         if limit is not None and limit.expression is not None:
             current = PlanNode(

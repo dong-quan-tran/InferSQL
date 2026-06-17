@@ -124,3 +124,88 @@ def test_query_plan_rejects_unknown_dataset(client: TestClient) -> None:
     assert response.status_code == 404
     assert response.json()["error"]["type"] == "UnknownDatasetError"
     assert response.json()["error"]["message"] == "Unknown dataset 'missing_table'"
+
+
+def test_query_plan_includes_sort_node_for_order_by_asc(client: TestClient) -> None:
+    response = client.post(
+        "/query/plan",
+        json={"sql": "SELECT symbol, close FROM prices ORDER BY close LIMIT 5"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    logical_plan = data["logical_plan"]
+
+    assert logical_plan["node_type"] == "Limit"
+    assert logical_plan["details"] == {"count": 5}
+
+    sort_node = logical_plan["children"][0]
+    assert sort_node["node_type"] == "Sort"
+    assert sort_node["details"] == {
+        "keys": [{"column": "close", "direction": "ASC"}]
+    }
+
+    project_node = sort_node["children"][0]
+    assert project_node["node_type"] == "Project"
+    assert project_node["details"] == {"columns": ["symbol", "close"]}
+
+    scan_node = project_node["children"][0]
+    assert scan_node["node_type"] == "Scan"
+    assert scan_node["details"] == {"table": "prices"}
+
+
+def test_query_plan_includes_sort_node_for_order_by_desc(client: TestClient) -> None:
+    response = client.post(
+        "/query/plan",
+        json={"sql": "SELECT symbol, close FROM prices ORDER BY close DESC LIMIT 5"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    logical_plan = data["logical_plan"]
+
+    assert logical_plan["node_type"] == "Limit"
+
+    sort_node = logical_plan["children"][0]
+    assert sort_node["node_type"] == "Sort"
+    assert sort_node["details"] == {
+        "keys": [{"column": "close", "direction": "DESC"}]
+    }
+
+
+def test_query_plan_places_sort_after_filter(client: TestClient) -> None:
+    response = client.post(
+        "/query/plan",
+        json={
+            "sql": "SELECT symbol, close FROM prices WHERE close > 100 ORDER BY close DESC LIMIT 5"
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    logical_plan = data["logical_plan"]
+
+    assert logical_plan["node_type"] == "Limit"
+
+    sort_node = logical_plan["children"][0]
+    assert sort_node["node_type"] == "Sort"
+    assert sort_node["details"] == {
+        "keys": [{"column": "close", "direction": "DESC"}]
+    }
+
+    project_node = sort_node["children"][0]
+    assert project_node["node_type"] == "Project"
+
+    filter_node = project_node["children"][0]
+    assert filter_node["node_type"] == "Filter"
+    assert filter_node["details"] == {
+        "predicate": {
+            "column": "close",
+            "operator": ">",
+            "value": 100,
+            "sql": "close > 100",
+        }
+    }

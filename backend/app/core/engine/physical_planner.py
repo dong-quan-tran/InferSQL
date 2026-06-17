@@ -1,12 +1,13 @@
-# app/core/engine/physical_planner.py
 from __future__ import annotations
 
 from app.schemas.query import PlanNode
+
 
 LOGICAL_TO_PHYSICAL = {
     "Scan": "TableScan",
     "Filter": "Filter",
     "Project": "Project",
+    "Sort": "Sort",
     "Limit": "Limit",
 }
 
