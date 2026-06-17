@@ -259,3 +259,106 @@ At this point, InferSQL can already be described as:
 - a schema-aware and test-driven backend foundation
 
 That is a meaningful milestone. The project is no longer just a design document; it is a running system with real endpoint behavior, real planning artifacts, and a real execution path.
+
+
+Progress log – 2026‑06‑16
+
+Copilot eval harness and validator
+Fixed the eval harness so that it properly distinguishes between referenced and projected columns.
+
+Validation now reports output columns based on the SELECT list, not every column that appears in WHERE.
+
+Execution stubs in the eval tests were updated to return column lists that match the projection.
+
+Tightened the fake validator logic used in tests:
+
+ticker and price are now treated as unknown columns, which drives the retry path.
+
+Aggregates like COUNT, SUM, AVG are mapped to “unsupported expression” in the eval harness.
+
+Multi-table / join cases and hallucinated tables/columns now hit explicit unsupported/unknown errors instead of falling through.
+
+Result: the copilot eval suite now accurately exercises:
+
+simple selects, filters, and limits,
+
+synonym repair (ticker -> symbol, price -> close),
+
+hallucinated-table and hallucinated-column behavior,
+
+unsupported-aggregate and unsupported-join behavior.
+
+Copilot service behavior
+Refined CopilotService.query to:
+
+Run validate–retry loops with clear logging of validation errors per attempt.
+
+Ensure execution only occurs once a candidate passes validation.
+
+Fixed several subtle contract mismatches between the service and the eval harness:
+
+Validation results now consistently carry has_where, has_group_by, has_order_by, has_limit flags.
+
+Execution result shape (columns and row counts) now aligns with what tests expect.
+
+Prompt-ready schema context
+Extracted schema-context formatting from CopilotService into a dedicated schema context builder:
+
+CopilotSchemaContextBuilder reads from DatasetRegistry.describe_table and produces a concise, LLM-friendly description:
+
+Table name and optional table description.
+
+Column names and types.
+
+Optional column descriptions.
+
+Optional sample values (up to a configurable limit).
+
+The builder is unit-tested to ensure it includes descriptions and examples when requested and can omit samples when disabled.
+
+CopilotService now just asks the builder for a schema context instead of hand-rolling strings, making the prompt payload:
+
+Easier to test,
+
+Easier to evolve (e.g., trimming samples or changing wording),
+
+Clearly separated from service orchestration logic.
+
+Question‑aware schema selection
+Added a deterministic schema selector in front of the schema context builder:
+
+CopilotSchemaSelector scores each table against the user question using token overlap across:
+
+Table name,
+
+Table description,
+
+Column names,
+
+Column descriptions,
+
+Sample values (with a lower weight).
+
+Implemented lightweight token normalization (singular/plural handling like prices → price, symbols → symbol) for more robust matches.
+
+Weighted scoring to prioritize:
+
+Column name hits > table name hits > description hits > sample-value hits.
+
+Integrated selector into CopilotService:
+
+_build_schema_context(question) now:
+
+Uses the selector to choose the top relevant tables for the question.
+
+Asks the schema context builder to render only those tables.
+
+All existing copilot tests were adjusted by fixing the call site to pass question into _build_schema_context.
+
+Added tests for:
+
+Preferring prices for “stock price” questions.
+
+Preferring fundamentals for “market cap” questions.
+
+Falling back to “all tables” when no useful overlap is found.
