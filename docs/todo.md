@@ -1,225 +1,194 @@
-# InferSQL Detailed TODO List
+# InferSQL Updated TODO List
 
-## Goal of the next phase
 
-The next phase should keep the project tightly aligned with the original InferSQL vision while staying realistic about what has actually been built so far. The immediate priority is to deepen the query engine MVP into a stronger analytical backend before branching into feature serving, inference, observability, and the copilot layer.
+## Current status
 
-## Priority order
+The backend foundation is now much stronger than when this list was first written.
 
-The recommended build order is:
+Implemented or substantially improved:
+- QueryService-based orchestration
+- dependency injection for query services
+- application factory and lifespan-oriented startup
+- settings/config cleanup
+- schema-aware validation for unknown datasets and unknown columns
+- limit/offset pagination for `/query/execute`
+- stronger tests around query contracts
+- local-first copilot provider direction using Ollama
+- first copilot evaluation harness
+- prompt-ready schema context builder for copilot
+- deterministic, question-aware schema selector for copilot
+- refined copilot eval harness that tests synonyms, hallucinations, and unsupported features end-to-end
 
-1. Expand the SQL engine to support the intended MVP query dialect.
-2. Improve correctness, contracts, and test depth.
-3. Add performance and observability hooks around query execution.
-4. Introduce dataset loading and richer catalog metadata.
-5. Build the first thin vertical slice of feature serving and inference.
-6. Add the first safe copilot entry point.
+Still missing are the major SQL-dialect expansions, real dataset ingestion, richer metadata exposure, and the next layer of copilot prompt quality and synonym handling.
+
+
+## Updated priority order
+
+1. Expand the SQL engine to support the remaining MVP dialect.
+2. Finish real dataset ingestion and metadata exposure.
+3. Improve benchmarking and observability depth.
+4. Strengthen copilot prompting, schema semantics (synonyms), validation, and evaluation.
+5. Add the first thin feature-store and inference slice.
+
 
 ## Phase 1: Query engine completion
 
 ### 1. Add `ORDER BY` support
-
-#### Why this matters
-The original blueprint includes `ORDER BY` in the MVP SQL dialect. It is also one of the most visible missing features for a query engine.
-
-#### Tasks
-- Extend the parser to detect and represent `ORDER BY` clauses in the logical plan.
-- Add a logical `Sort` node.
-- Add a physical `Sort` node/operator.
-- Support ascending and descending sort directions.
-- Define deterministic behavior for null ordering or explicitly document the current choice.
+- Extend parser to detect and represent `ORDER BY`.
+- Add logical `Sort` node.
+- Add physical sort operator.
+- Support ascending and descending order.
+- Define/document null ordering behavior.
 - Add tests for:
-  - single-column ascending sort
-  - single-column descending sort
-  - sorting after filter
-  - sorting with limit
+  - ascending sort
+  - descending sort
+  - sort after filter
+  - sort with limit
 
 ### 2. Add aggregate support
-
-#### Why this matters
-Aggregation is central to analytical SQL and is explicitly part of the original project blueprint.
-
-#### Tasks
-- Extend parsing and logical planning for:
-  - `SUM`
+- Extend parsing and planning for:
   - `COUNT`
-  - `AVG` if feasible after SUM/COUNT
-- Add `GROUP BY` logical-plan support.
+  - `SUM`
+  - `AVG` if feasible
+- Add `GROUP BY` support.
 - Add aggregate physical operators.
-- Decide on MVP constraints, for example:
-  - single aggregate function at first
-  - grouped aggregation before global aggregation
+- Define MVP constraints clearly.
 - Add tests for:
   - `COUNT(*)`
-  - grouped `SUM(close)` by `symbol` on a richer fixture
+  - grouped sums
   - invalid aggregate queries
-  - consistency of aggregation results
+  - aggregate result consistency
 
-### 3. Add projection alias support cleanup
+### 3. Finish projection alias handling
+- Ensure aliases appear correctly in summaries, plans, and execute responses.
+- Preserve alias names in output columns.
+- Add tests for aliased projections.
 
-#### Why this matters
-Aliases become important as soon as aggregate expressions and more complex projections appear.
+### 4. Add join groundwork
+- Detect multi-table queries and join clauses.
+- Define the first supported join type or explicitly reject all joins for now.
+- Add stable unsupported-join errors.
+- Add planner placeholders if execution is deferred.
 
-#### Tasks
-- Ensure `SELECT close AS price` is represented correctly in summaries and plans.
-- Ensure output columns preserve alias names.
-- Add tests for aliased projections in both plan and execute responses.
 
-### 4. Add join planning groundwork
+## Phase 2: Catalog and ingestion
 
-#### Why this matters
-The original blueprint expects hash joins later. Full join execution can wait, but groundwork should begin once single-table analytical support is solid.
-
-#### Tasks
-- Extend parsing support to detect multi-table queries and join clauses.
-- Decide the first supported join type, likely `INNER JOIN` on equi-join predicates.
-- Add explicit errors for unsupported join patterns.
-- Add planner-level placeholders if full execution is deferred.
-
-## Phase 2: Correctness and API maturity
-
-### 5. Strengthen schema validation
-
-#### Tasks
-- Add unknown-table diagnostics to `/query/validate`, `/query/plan`, and `/query/execute`.
-- Improve error messages for qualified columns like `prices.close`.
-- Add clearer messages for unsupported expressions.
-- Validate that projected columns, predicate columns, and future group/order columns all exist before execution.
-- Add tests for:
-  - unknown dataset
-  - qualified unknown column
-  - unsupported multi-table references
-  - unsupported predicate structure
-
-### 6. Add request and response model cleanup
-
-#### Tasks
-- Review all endpoint response models for exact alignment with actual payloads.
-- Separate validate/plan/execute schemas cleanly if any shared model is over-constraining endpoints.
-- Standardize `engine` and `steps` metadata across endpoints.
-- Add typed request models if any endpoints still accept raw dict payloads.
-
-### 7. Add execution safeguards
-
-#### Tasks
-- Enforce a server-side max result size.
-- Decide how SQL `LIMIT` interacts with API `limit` and `offset`.
-- Reject pathological requests with clear messages.
-- Add timeout boundaries around expensive execution paths.
-
-## Phase 3: Better catalog and dataset ingestion
-
-### 8. Build a real dataset loader
-
-#### Why this matters
-The current seeded Arrow table is useful, but the blueprint is built around datasets loaded from files and eventually richer data sources.
-
-#### Tasks
-- Add CSV loader support.
-- Add Parquet loader support.
-- Register loaded tables in the dataset registry.
-- Store metadata such as:
+### 5. Build a real dataset loader
+- Add CSV loading.
+- Add Parquet loading.
+- Register loaded tables in the registry.
+- Store metadata:
   - row count
   - schema
   - source path
-  - last loaded timestamp
-- Add tests for loading datasets from fixture files.
+  - loaded timestamp
+- Add fixture-based ingestion tests.
 
-### 9. Expand catalog metadata
+### 6. Expand catalog metadata
+- Add schema introspection endpoint.
+- Return dataset metadata from the registry.
+- List dataset columns and types.
+- **(Done)** Prepare a safe prompt-ready schema payload for copilot use:
+  - Implemented `CopilotSchemaContextBuilder` that formats table/column descriptions and sample values.
+  - Integrated into `CopilotService` so copilot always uses a structured schema context.
 
-#### Tasks
-- Add a schema introspection endpoint.
-- Return dataset metadata from the registry, not only raw tables.
-- Support listing column names and types for each dataset.
-- Prepare a safe schema payload that can later be injected into the copilot prompt.
 
-## Phase 4: Query engine observability and benchmarks
+## Phase 3: Observability and performance
 
-### 10. Add execution instrumentation
-
-#### Why this matters
-Observability is a major part of the original blueprint, and query execution is the easiest place to start.
-
-#### Tasks
-- Add timing around parse, plan, and execute stages.
-- Include per-stage timing in debug responses.
-- Add structured logs for request id, sql, normalized sql, duration, and status.
+### 7. Deepen execution instrumentation
+- Keep per-stage parse/plan/execute timing.
+- Add structured logs for sql, normalized sql, request id, duration, and status.
 - Add minimal OpenTelemetry spans around query lifecycle steps.
+- Standardize debug metadata across endpoints.
 
-### 11. Add benchmarks
+### 8. Expand benchmarks
+- Benchmark Arrow execution against a naive baseline.
+- Benchmark filter/project/limit at increasing row counts.
+- Save benchmark summaries and comparison artifacts.
+- Add regression thresholds that fail on latency degradation.
 
-#### Tasks
-- Benchmark current Arrow-backed execution against a naive row-based baseline.
-- Benchmark filter/project/limit queries at increasing row counts.
-- Publish baseline numbers in docs.
-- Add a reproducible benchmark script.
 
-## Phase 5: First feature-store and inference slice
+## Phase 4: Copilot quality and safety
 
-### 12. Define the smallest viable feature store slice
+### 9. Improve Ollama prompt quality
+- Add few-shot examples to the provider prompt.
+- Add synonym mapping guidance, such as `ticker -> symbol` and `stock price -> close`.
+- Move prompt examples into config/assets instead of hardcoding.
+- Add tests for prompt construction behavior.
 
-#### Tasks
+### 10. Strengthen copilot validation
+- **(Partially done)** Validate generated SQL with the same parser/schema checks as the core query engine:
+  - Eval harness now treats unknown datasets/columns, joins, and aggregates consistently.
+- Normalize generated SQL before scoring or returning results.
+- Return explicit unsupported-feature reasons for joins, aggregates, and unsupported expressions.
+- Keep generation separate from execution by default.
+- Ensure validation results always include:
+  - `query_type`
+  - `tables`
+  - `columns`
+  - `has_where`, `has_group_by`, `has_order_by`, `has_limit`.
+
+### 11. Expand copilot eval coverage
+- **(Done for initial slice)** Add eval cases for:
+  - synonym queries (e.g. `ticker` / `price` synonyms)
+  - ambiguous requests
+  - hallucinated tables
+  - hallucinated columns
+  - unsupported joins
+  - unsupported aggregates
+- Track quality by category, not only overall score (to do).
+- Save eval summaries for comparison over time (to do).
+- Add regression thresholds for eval quality (to do).
+
+### 12. Add schema-aware selection and context (new)
+
+- **(Done)** Add a question-aware schema selector that:
+  - scores tables using table names, descriptions, column names, column descriptions, and sample values.
+  - normalizes basic plural/singular token variants to improve matching.
+  - returns top-N relevant tables per question with a fallback to all tables if no scores are positive.
+- **(Done)** Integrate selector with copilot schema context:
+  - `CopilotService` now builds prompts using only the selected tables for each question.
+- Add metrics around selected-table counts and which tables are chosen over time (to do).
+
+
+## Phase 5: Feature store and inference slice
+
+### 13. Define the smallest viable feature store slice
 - Create a feature-set registry abstraction.
-- Define a format for feature definitions.
-- Build a simple materialization path from query results into a key-value store or in-memory cache.
-- Start with local-only backing storage before Redis if needed for speed of delivery.
+- Define a feature definition format.
+- Materialize query results into local-only storage or cache.
+- Keep the first version simple and local.
 
-### 13. Build a minimal model registry
-
-#### Tasks
+### 14. Build a minimal model registry
 - Define model metadata schema.
 - Register model name, version, artifact path, and input schema.
-- Add a read-only API to list models.
-- Delay advanced deployment modes until the registry contract is stable.
+- Add read-only API endpoints.
 
-### 14. Add a minimal inference runtime
-
-#### Tasks
-- Support loading one demo model.
-- Accept a structured inference request.
+### 15. Add a minimal inference runtime
+- Load one demo model.
+- Accept structured inference requests.
 - Return prediction, model version, and latency metadata.
 - Add end-to-end tests for feature lookup plus inference.
 
-## Phase 6: Copilot foundation
 
-### 15. Add a guarded natural-language to SQL prototype
-
-#### Why this matters
-The original blueprint includes an LLM copilot, but it should sit on top of a stable schema-aware query API.
-
-#### Tasks
-- Build a prompt schema using dataset metadata from the catalog.
-- Restrict generation to the currently supported SQL subset.
-- Validate generated SQL with the same parser and schema checks already used by the core service.
-- Return generated SQL without auto-executing at first.
-- Add prompt-injection rejection tests.
-
-## Documentation tasks
+## Documentation
 
 ### 16. Keep architecture docs current
+- Update progress logs after each milestone.
+- Keep blueprint and backend docs aligned with the actual codebase.
+- Track implemented vs planned vs deferred work.
 
-#### Tasks
-- Maintain a progress log after every major milestone.
-- Keep the blueprint synchronized with the actual codebase.
-- Record what is implemented vs planned vs deferred.
-- Add a concise backend architecture document focused on the current system, not only the aspirational future one.
+### 17. Improve developer docs
+- Add or refine `DEVELOPMENT.md`.
+- Document local setup and test commands.
+- Document the currently supported SQL subset.
+- Document copilot endpoint behavior and current limits.
 
-### 17. Improve developer onboarding docs
-
-#### Tasks
-- Add `DEVELOPMENT.md` with local setup instructions.
-- Document test commands and known environment requirements.
-- Document current supported SQL subset.
-- Document current endpoint contracts with example payloads and responses.
 
 ## Recommended immediate next sprint
 
-The best next sprint is:
-
 1. Implement `ORDER BY` end-to-end.
-2. Add unknown-table validation tests.
-3. Add CSV/Parquet dataset loading.
-4. Add per-stage query timing in debug responses.
-5. Benchmark current filter/project/limit performance.
-
-This sequence keeps the project aligned with the original blueprint while continuing to build on the strongest part of the current codebase: the query engine core.
+2. Add few-shot prompting to the Ollama provider.
+3. Add synonym-aware schema matching and prompt hints (e.g., `ticker -> symbol`, `stock price -> close`).
+4. Add CSV/Parquet dataset loading.
+5. Add basic category-level copilot eval summaries and regression checks.
