@@ -138,3 +138,35 @@ def test_schema_context_builder_can_limit_to_selected_tables() -> None:
 
     assert "Table: prices" in context
     assert "Table: fundamentals" not in context
+
+def test_schema_context_builder_includes_alias_hints() -> None:
+    registry = DatasetRegistry()
+    registry.register_table(
+        "prices",
+        pa.table(
+            {
+                "symbol": ["AAPL", "MSFT", "NVDA"],
+                "close": [189.12, 425.27, 1210.54],
+            }
+        ),
+        metadata=DatasetMetadata(
+            description="Daily security prices for a demo stock universe.",
+            columns={
+                "symbol": DatasetColumnMetadata(
+                    description="Ticker symbol such as AAPL or MSFT."
+                ),
+                "close": DatasetColumnMetadata(
+                    description="Closing price for the security."
+                ),
+            },
+        ),
+    )
+
+    builder = CopilotSchemaContextBuilder(registry)
+    context = builder.build()
+
+    assert "aliases:" in context
+    assert "ticker" in context
+    assert "stock symbol" in context
+    assert "close price" in context
+    assert "closing price" in context

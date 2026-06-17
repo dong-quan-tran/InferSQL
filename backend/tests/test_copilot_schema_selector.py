@@ -75,3 +75,21 @@ def test_select_tables_falls_back_to_all_tables_when_no_overlap() -> None:
     selected = selector.select_tables("Completely unrelated phrasing")
 
     assert selected == ["fundamentals", "prices"]
+
+
+def test_select_tables_prefers_fundamentals_for_market_cap_question() -> None:
+    registry = build_registry()
+    selector = CopilotSchemaSelector(registry)
+
+    selected = selector.select_tables("Show market cap for MSFT")
+
+    assert selected[0] == "fundamentals"
+
+
+def test_select_tables_uses_synonym_expansion_for_price_question() -> None:
+    registry = build_registry()
+    selector = CopilotSchemaSelector(registry)
+
+    selected = selector.select_tables("Show stock price for AAPL")
+
+    assert selected[0] == "prices"
