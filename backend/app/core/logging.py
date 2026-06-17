@@ -69,8 +69,21 @@ def configure_logging(json_logs: bool = True, log_level: str = "INFO") -> None:
     if json_logs:
         handler.setFormatter(JSONFormatter())
     else:
+        class SafeFormatter(logging.Formatter):
+            def format(self, record: logging.LogRecord) -> str:
+                # Ensure optional attributes exist so %-formatting doesn't explode
+                if not hasattr(record, "stage"):
+                    record.stage = "-"
+                if not hasattr(record, "dataset"):
+                    record.dataset = "-"
+                if not hasattr(record, "error_code"):
+                    record.error_code = "-"
+                if not hasattr(record, "request_id"):
+                    record.request_id = get_request_id()
+                return super().format(record)
+
         handler.setFormatter(
-            logging.Formatter(
+            SafeFormatter(
                 "%(asctime)s [%(levelname)s] %(name)s request_id=%(request_id)s "
                 "stage=%(stage)s dataset=%(dataset)s error_code=%(error_code)s — %(message)s"
             )
