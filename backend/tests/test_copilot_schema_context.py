@@ -96,3 +96,45 @@ def test_schema_context_builder_can_disable_samples() -> None:
     context = builder.build()
 
     assert "examples:" not in context
+
+
+def test_schema_context_builder_can_limit_to_selected_tables() -> None:
+    registry = DatasetRegistry()
+    registry.register_table(
+        "prices",
+        pa.table(
+            {
+                "symbol": ["AAPL", "MSFT"],
+                "close": [189.12, 425.27],
+            }
+        ),
+        metadata=DatasetMetadata(
+            description="Daily security prices.",
+            columns={
+                "symbol": DatasetColumnMetadata(description="Ticker symbol."),
+                "close": DatasetColumnMetadata(description="Closing price."),
+            },
+        ),
+    )
+    registry.register_table(
+        "fundamentals",
+        pa.table(
+            {
+                "symbol": ["AAPL", "MSFT"],
+                "market_cap": [3.1, 3.0],
+            }
+        ),
+        metadata=DatasetMetadata(
+            description="Company fundamentals.",
+            columns={
+                "symbol": DatasetColumnMetadata(description="Ticker symbol."),
+                "market_cap": DatasetColumnMetadata(description="Market capitalization."),
+            },
+        ),
+    )
+
+    builder = CopilotSchemaContextBuilder(registry)
+    context = builder.build(table_names=["prices"])
+
+    assert "Table: prices" in context
+    assert "Table: fundamentals" not in context
