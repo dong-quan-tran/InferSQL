@@ -362,3 +362,96 @@ Preferring prices for “stock price” questions.
 Preferring fundamentals for “market cap” questions.
 
 Falling back to “all tables” when no useful overlap is found.
+
+Progress log: 06/17/2026
+
+1. ORDER BY end-to-end
+Planning
+
+Extended the parser to:
+
+Recognize ORDER BY clauses.
+
+Extract sort keys as { column, direction }, with ASC as default and DESC explicitly captured.
+
+Updated the logical planner to:
+
+Insert a Sort logical node between Project and Limit when an ORDER BY is present.
+
+Preserve the order of sort keys so multi-column sorts are supported later if needed.
+
+Updated the physical planner to:
+
+Map logical Sort -> physical Sort operator.
+
+Keep Limit as the final node, so the pipeline is: Scan -> Filter -> Project -> Sort -> Limit.
+
+Execution
+
+Implemented a SortOperator using Arrow:
+
+Uses pyarrow.compute.sort_indices with mapped orders: "ASC" -> "ascending", "DESC" -> "descending".
+
+Applies sort to the entire table and then reuses existing pagination logic (Limit + API-level limit/offset).
+
+Updated QueryExecutor to:
+
+Recognize the Sort physical node.
+
+Execute Sort after Project (and Filter) but before Limit.
+
+Tests
+
+Planning tests:
+
+Added coverage for:
+
+ORDER BY close (ascending default).
+
+ORDER BY close DESC.
+
+WHERE ... ORDER BY ... LIMIT ensures the tree order is Scan -> Filter -> Project -> Sort -> Limit.
+
+Execution tests:
+
+Verified:
+
+Ascending sort returns rows where close values are sorted increasing.
+
+Descending sort returns rows sorted decreasing.
+
+Sort-after-filter respects both filter predicate and sort order.
+
+Confirmed both logical and physical plans show Sort between Project and Limit.
+
+Net result: ORDER BY is now fully wired and observable in /query/plan and /query/execute.
+
+2. Logging robustness + tests
+Logging behavior
+
+Hardened non-JSON logging:
+
+The plain-text formatter previously assumed every record had stage, dataset, and error_code fields, causing formatting errors when they were missing.
+
+Added a safe formatter that:
+
+Ensures stage, dataset, error_code, and request_id exist on every record.
+
+Falls back to "-" when a field is not present.
+
+JSON logging was already robust; we left it as-is and just ensured both code paths share the same request-id filter.
+
+Logging tests
+
+Added a small logging smoke test module that:
+
+Configures JSON logging, logs once, asserts the output is valid JSON and contains message, request_id, logger, and level.
+
+Configures plain-text logging, logs once without extra fields, and asserts:
+
+No errors are emitted.
+
+The log line includes the logger name, the message, and the request id.
+
+Net result: logging no longer crashes under either JSON or plain-text configuration, and this behavior is now guarded by tests.
+
