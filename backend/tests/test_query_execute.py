@@ -53,3 +53,69 @@ def test_query_execute_rejects_unknown_dataset(client: TestClient) -> None:
     assert response.status_code == 404
     assert response.json()["error"]["type"] == "UnknownDatasetError"
     assert response.json()["error"]["message"] == "Unknown dataset 'missing_table'"
+
+
+def test_query_execute_orders_rows_ascending(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={"sql": "SELECT symbol, close FROM prices ORDER BY close LIMIT 3"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["columns"] == ["symbol", "close"]
+    assert data["row_count"] == 3
+
+    closes = [row["close"] for row in data["rows"]]
+    assert closes == sorted(closes)
+
+    assert data["logical_plan"]["node_type"] == "Limit"
+    assert data["physical_plan"]["node_type"] == "Limit"
+
+    sort_node = data["logical_plan"]["children"][0]
+    assert sort_node["node_type"] == "Sort"
+    assert sort_node["details"] == {
+        "keys": [{"column": "close", "direction": "ASC"}]
+    }
+
+
+def test_query_execute_orders_rows_descending(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={"sql": "SELECT symbol, close FROM prices ORDER BY close DESC LIMIT 3"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["columns"] == ["symbol", "close"]
+    assert data["row_count"] == 3
+
+    closes = [row["close"] for row in data["rows"]]
+    assert closes == sorted(closes, reverse=True)
+
+    sort_node = data["logical_plan"]["children"][0]
+    assert sort_node["node_type"] == "Sort"
+    assert sort_node["details"] == {
+        "keys": [{"column": "close", "direction": "DESC"}]
+    }
+
+
+def test_query_execute_orders_rows_after_filter(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": "SELECT symbol, close FROM prices WHERE close > 100 ORDER BY close DESC LIMIT 2"
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["columns"] == ["symbol", "close"]
+    assert data["row_count"] == 2
+
+    closes = [row["close"] for row in data["rows"]]
+    assert closes == sorted(closes, reverse=True)
+    assert all(value > 100 for value in closes)

@@ -1,4 +1,3 @@
-# app/core/engine/executor/service.py
 from __future__ import annotations
 
 import pyarrow as pa
@@ -10,6 +9,7 @@ from .filter import FilterOperator
 from .limit import LimitOperator
 from .project import ProjectOperator
 from .scan import TableScanOperator
+from .sort import SortOperator
 
 
 class QueryExecutor:
@@ -17,6 +17,7 @@ class QueryExecutor:
         self.scan = TableScanOperator(registry)
         self.filter = FilterOperator()
         self.project = ProjectOperator()
+        self.sort = SortOperator()
         self.limit = LimitOperator()
 
     def execute(self, plan: PlanNode) -> pa.Table:
@@ -39,6 +40,9 @@ class QueryExecutor:
 
         if plan.node_type == "Project":
             return self.project.execute(input_table, plan.details["columns"])
+
+        if plan.node_type == "Sort":
+            return self.sort.execute(input_table, plan.details["keys"])
 
         if plan.node_type == "Limit":
             return self.limit.execute(input_table, plan.details["limit"])
