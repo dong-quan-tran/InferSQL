@@ -12,6 +12,7 @@ from app.schemas.copilot import (
 from app.services.copilot_schema_context import CopilotSchemaContextBuilder
 from app.services.llm.base import LLMProvider
 from app.services.query_service import QueryService
+from app.services.copilot_schema_selector import CopilotSchemaSelector
 
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ class CopilotService:
         self.llm_provider = llm_provider
         self.max_retries = max_retries
         self.schema_context_builder = CopilotSchemaContextBuilder(dataset_registry)
+        self.schema_selector = CopilotSchemaSelector(dataset_registry)
 
     def query(
         self,
@@ -37,7 +39,7 @@ class CopilotService:
         execute: bool = False,
         request_id: str | None = None,
     ) -> CopilotQueryResponse:
-        schema_context = self._build_schema_context()
+        schema_context = self._build_schema_context(question)
         retry_history: list[CopilotRetryStep] = []
 
         candidate = self.llm_provider.generate_sql_candidate(
@@ -124,8 +126,9 @@ class CopilotService:
             has_limit=result["has_limit"],
         )
 
-    def _build_schema_context(self) -> str:
-        return self.schema_context_builder.build()
+    def _build_schema_context(self, question: str) -> str:
+        selected_tables = self.schema_selector.select_tables(question)
+        return self.schema_context_builder.build(table_names=selected_tables)
 
     def _build_repair_prompt(
         self,

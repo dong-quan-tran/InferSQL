@@ -14,10 +14,11 @@ class CopilotSchemaContextBuilder:
         self.include_samples = include_samples
         self.sample_limit = sample_limit
 
-    def build(self) -> str:
+    def build(self, table_names: list[str] | None = None) -> str:
         parts: list[str] = []
+        selected_tables = table_names or self.dataset_registry.list_tables()
 
-        for table_name in self.dataset_registry.list_tables():
+        for table_name in selected_tables:
             description = self.dataset_registry.describe_table(
                 table_name,
                 include_samples=self.include_samples,
