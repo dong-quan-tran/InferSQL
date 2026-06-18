@@ -7,6 +7,7 @@ LOGICAL_TO_PHYSICAL = {
     "Scan": "TableScan",
     "Filter": "Filter",
     "Project": "Project",
+    "Aggregate": "Aggregate",
     "Sort": "Sort",
     "Limit": "Limit",
 }

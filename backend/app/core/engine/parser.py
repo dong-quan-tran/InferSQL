@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from sqlglot import exp, parse_one
 from sqlglot.errors import ParseError
 
@@ -89,13 +91,95 @@ class QueryParser:
                 current.details["predicate"]["operator"],
             )
 
+        group = expression.args.get("group")
         select_expressions = expression.expressions or []
-        columns = []
+
+        aggregates: list[dict[str, str]] = []
+        group_keys: list[str] = []
+
+        if group is not None:
+            for group_expr in group.expressions:
+                if isinstance(group_expr, exp.Column):
+                    group_keys.append(group_expr.name)
+                else:
+                    group_keys.append(group_expr.sql())
+
+        def _aggregate_arg(node: exp.Expression):
+            arg = getattr(node, "this", None)
+            if arg is not None:
+                return arg
+            expressions = getattr(node, "expressions", None) or []
+            return expressions[0] if expressions else None
+
+        for item in select_expressions:
+            if isinstance(item, exp.Alias):
+                target = item.this
+                alias = item.alias
+            else:
+                target = item
+                alias = None
+
+            func_name: str | None = None
+            column_name: str | None = None
+
+            if isinstance(target, exp.Count):
+                func_name = "COUNT"
+                arg = _aggregate_arg(target)
+                if isinstance(arg, exp.Star) or arg is None:
+                    column_name = "*"
+                elif isinstance(arg, exp.Column):
+                    column_name = arg.name
+                else:
+                    column_name = arg.sql()
+
+            elif isinstance(target, exp.Sum):
+                func_name = "SUM"
+                arg = _aggregate_arg(target)
+                if isinstance(arg, exp.Column):
+                    column_name = arg.name
+                else:
+                    column_name = arg.sql() if arg is not None else "*"
+
+            elif isinstance(target, exp.Avg):
+                func_name = "AVG"
+                arg = _aggregate_arg(target)
+                if isinstance(arg, exp.Column):
+                    column_name = arg.name
+                else:
+                    column_name = arg.sql() if arg is not None else "*"
+
+            if func_name is not None:
+                default_alias = (
+                    "count"
+                    if func_name == "COUNT" and column_name == "*"
+                    else f"{func_name.lower()}_{column_name}"
+                )
+                aggregates.append(
+                    {
+                        "func": func_name,
+                        "column": column_name or "*",
+                        "alias": alias or default_alias,
+                    }
+                )
+
+        if aggregates or group_keys:
+            current = PlanNode(
+                node_type="Aggregate",
+                details={
+                    "group_keys": group_keys,
+                    "aggregates": aggregates,
+                },
+                children=[current],
+            )
+
+        columns: list[str] = []
         for item in select_expressions:
             if isinstance(item, exp.Star):
                 columns.append("*")
             elif isinstance(item, exp.Column):
                 columns.append(item.name)
+            elif isinstance(item, exp.Alias):
+                columns.append(item.alias)
             else:
                 columns.append(item.sql())
 
@@ -107,7 +191,7 @@ class QueryParser:
 
         order = expression.args.get("order")
         if order is not None and order.expressions:
-            sort_keys = []
+            sort_keys: list[dict[str, Any]] = []
             for ordered in order.expressions:
                 if not isinstance(ordered, exp.Ordered):
                     continue
@@ -140,7 +224,7 @@ class QueryParser:
             )
 
         return current
-
+    
     def _literal_value(self, node):
         if isinstance(node, exp.Literal):
             if node.is_string:
