@@ -11,7 +11,11 @@ Support ascending and descending order.
 
 [~] Define/document null ordering behavior.
 
-Decide and document something like “NULLs sort last” (or first) and add a test to lock it in.
+Effective behavior is whatever Arrow’s sort uses by default; you still need to:
+
+Decide and document “NULLs sort last” vs “first”.
+
+Add at least one test that explicitly hits rows with nulls to lock in behavior.
 
 Add tests for:
 
@@ -31,13 +35,15 @@ COUNT
 
 SUM
 
-AVG (if feasible now)
+AVG (MVP implementation is in place).
 
 Add GROUP BY logical-plan support.
 
 Add aggregate physical operators (global and grouped).
 
-Define MVP constraints clearly (e.g., one aggregate per query, no HAVING at first).
+[~] Define MVP constraints clearly in docs:
+
+The implementation enforces some constraints via validation (e.g., non-grouped columns must appear in GROUP BY or be aggregated, SELECT * with GROUP BY rejected), but this is not yet fully written up in user-facing docs.
 
 Add tests for:
 
@@ -47,25 +53,37 @@ grouped sums on realistic fixtures (e.g., SUM(close) BY symbol)
 
 invalid aggregate queries (missing GROUP BY, mixing aggregated and non-aggregated columns)
 
-consistency of aggregation results.
+basic consistency of aggregation results (per-symbol totals, row counts, etc.)
 
 Finish projection alias handling
 
 Ensure SELECT close AS price is represented correctly in summaries and plans.
 
+Logical plan includes projection metadata with {source: "close", output: "price"}.
+
 Ensure output columns preserve alias names in execute responses.
 
-Add tests for aliased projections (simple, with filters, with future aggregates).
+API columns list and row dicts now use alias names.
+
+Add tests for aliased projections:
+
+simple alias
+
+alias with filters
+
+alias with grouped aggregates
 
 Add join groundwork
 
-Detect multi-table queries and join clauses in the parser layer.
+Detect multi-table queries and join clauses in the parser layer (beyond rejecting them).
 
-Decide first supported join type (probably INNER JOIN on equality) or explicitly reject all joins for now.
+Decide first supported join type (probably INNER JOIN on equality) or explicitly reject all joins with structured errors.
 
-Add stable, user-friendly unsupported-join errors (this is partially done at the schema-validation layer).
+[~] Add stable, user-friendly unsupported-join errors:
 
-Add planner placeholders if execution is deferred, so the logical plan can represent a join even if the engine won’t execute it yet.
+You already have some validation behavior around “joins unsupported”, but this could be sharpened and tested more explicitly.
+
+Add planner placeholders if execution is deferred, so the logical plan can represent a Join node even if there’s no physical join yet.
 
 Phase 2: Catalog and ingestion
 Build a real dataset loader
@@ -90,81 +108,77 @@ Add fixture-based ingestion tests for CSV and Parquet.
 
 Expand catalog metadata
 
-Add schema introspection endpoint (list datasets, columns, types).
+[~] Add schema introspection endpoint (list datasets, columns, types).
+
+Some metadata plumbing already exists in the DatasetRegistry and is used by copilot, but there is no separate public introspection endpoint yet.
 
 Prepare prompt-ready schema payload for copilot:
 
-CopilotSchemaContextBuilder is implemented and integrated.
+CopilotSchemaContextBuilder and metadata-rich descriptions are in place and wired into copilot.
 
-Return dataset metadata from the registry via API, not just internally for copilot.
+[~] Return dataset metadata from the registry via API, not just internally for copilot.
 
-Align introspection payload format with what copilot uses so the same structure can be reused or trivially transformed.
+Copilot is consuming it; public-facing catalog endpoints are still to be added.
+
+[~] Align introspection payload format with what copilot uses.
+
+The shape is essentially there; the missing piece is reusing or exposing it via an HTTP endpoint.
 
 Phase 3: Observability and performance
 Deepen execution instrumentation
 
 [~] Keep per-stage parse/plan/execute timing:
 
-Timers exist in the query service, but you can standardize and make sure every endpoint populates them.
+Some timing exists in QueryService and logs; needs standardization and explicit tests or docs.
 
-Add structured logs for:
+[~] Add structured logs for:
 
 request id
 
 sql and normalized sql
 
-stage timings
+[~] stage timings
 
-status/outcome
+[~] status/outcome
 
-Add minimal OpenTelemetry spans around query lifecycle (parse -> plan -> execute).
+Add minimal OpenTelemetry spans around query lifecycle (parse → plan → execute).
 
-Standardize debug metadata across /validate, /plan, /execute.
+[~] Standardize debug metadata across /validate, /plan, /execute.
+
+They share some fields; still room to make the shape fully consistent.
 
 Expand benchmarks
 
-Benchmark Arrow execution vs a naive row-based baseline (for at least filter/project/limit).
+Benchmark Arrow execution vs a naive row-based baseline (filter/project/limit).
 
-Benchmark filter/project/limit at increasing row counts (e.g., 1k, 10k, 100k, 1M).
+Benchmark filter/project/limit at increasing row counts (1k, 10k, 100k, 1M).
 
-Save benchmark summaries and comparison artifacts to disk so runs are comparable.
+Save benchmark summaries and comparison artifacts to disk.
 
-Add regression thresholds that fail CI on latency degradation beyond some percentage.
+Add regression thresholds for latency degradation.
 
 Phase 4: Copilot quality and safety
 Improve Ollama prompt quality
 
-[~] Add few-shot examples to the provider prompt (if not fully done, ensure they’re loaded from assets rather than hard-coded).
+[~] Add few-shot examples to the provider prompt:
 
-[~] Add synonym mapping guidance:
+Prompt assets exist and are used; double-check all examples are loaded from assets and fully wired.
 
-ticker -> symbol
+Add synonym mapping guidance (ticker → symbol, stock price → close, etc.) and keep it in assets/config.
 
-stock price -> close
+[~] Add direct tests for prompt construction (shape, examples, synonyms, schema snippet).
 
-Additional domain synonyms, as needed.
-
-Ensure prompt examples live in assets/config, not inline in code.
-
-Add direct tests for prompt construction (shape, presence of examples, synonym hints, schema snippet).
+Some tests exist around prompt assets; there’s still room for stricter prompt snapshot tests.
 
 Strengthen copilot validation
 
-[~] Validate generated SQL with the same parser/schema checks as the core query engine:
+Validate generated SQL with the same parser/schema checks as the core engine (including aggregates and joins being unsupported where appropriate).
 
-The eval harness already exercises unknown datasets/columns, joins, and aggregates.
+Normalize generated SQL before scoring or returning results in the eval harness.
 
-Normalize generated SQL before scoring or returning results (to make comparisons more robust).
+Return explicit unsupported-feature reasons for joins, aggregates, and other unsupported expressions (to the extent wired in current eval tests).
 
-Return explicit unsupported-feature reasons for:
-
-joins (until join support exists),
-
-aggregates (until aggregate support exists),
-
-other unsupported expressions.
-
-Keep generation separate from execution by default (copilot returns SQL, client chooses whether to execute).
+Keep generation separate from execution by default.
 
 Ensure validation results always include:
 
@@ -178,111 +192,62 @@ has_where, has_group_by, has_order_by, has_limit.
 
 Expand copilot eval coverage
 
-Add eval cases for:
+[~] Add eval cases for:
 
-synonym queries (ticker, stock price etc.).
+synonym queries (ticker, stock price, etc.)
 
-ambiguous requests.
+[~] ambiguous requests
 
-hallucinated tables.
+[~] hallucinated tables
 
-hallucinated columns.
+[~] hallucinated columns
 
-unsupported joins.
+unsupported joins
 
-unsupported aggregates.
+unsupported aggregates
 
-Track quality by category (you’ve got the summary structure; ensure it’s wired into your metrics).
+Track quality by category; generate summary.
 
-Save eval summaries to disk as JSON artifacts per run.
+[~] Save eval summaries to disk per run and enforce regression thresholds.
 
-Add regression thresholds for eval quality that can fail CI when accuracy drops below a given per-category floor.
+Summaries exist; writing them out and enforcing thresholds in CI is still to come.
 
 Schema-aware selection and context
 
-Add a question-aware schema selector that:
+Add a question-aware schema selector (implemented as CopilotSchemaSelector with tokenization, synonyms, and scoring over table/column metadata and samples).
 
-Scores tables using names, descriptions, columns, and sample values.
+Integrate selector with CopilotSchemaContextBuilder.
 
-Normalizes basic singular/plural forms.
-
-Returns top-N tables with safe fallback.
-
-Integrate selector with copilot schema context builder.
-
-Add metrics around selection behavior:
-
-number of tables selected per query.
-
-distribution of selected tables over time.
-
-possibly tie selection choices into eval outputs to debug mis-grounding.
+[~] Add metrics around selection behavior (tables selected per query, selection distribution, tie-in to eval outputs).
 
 Phase 5: Feature store and inference slice
-Define the smallest viable feature store slice
+This phase is untouched so far:
 
-Create a feature-set registry abstraction (name, keys, columns, refresh policy).
+Define the smallest viable feature-store slice (registry abstraction, definition format, materialization).
 
-Define a feature definition format (probably static YAML/JSON config for now).
+Build minimal model registry.
 
-Materialize query results into local-only key-value storage (in-memory dict or simple on-disk store).
-
-Keep the first version local only; no Redis or remote infra yet.
-
-Build a minimal model registry
-
-Define model metadata schema (name, version, artifact path, input schema).
-
-Implement in-memory or file-backed registry.
-
-Add read-only API endpoints for listing models and reading metadata.
-
-Add a minimal inference runtime
-
-Load one demo model (e.g., a simple scikit-learn or PyTorch model).
-
-Accept structured inference requests (features keyed by the feature registry).
-
-Return prediction, model version, and inference latency.
-
-Add end-to-end tests: feature lookup -> inference -> response.
+Build minimal inference runtime and end-to-end tests.
 
 Documentation
 Keep architecture docs current
 
-Add/extend a progress log (today’s entry can be the latest bullet).
+[~] Add/extend a progress log.
 
-Keep the architecture document in sync with what actually exists:
+You’ve captured progress in chat; this needs to be written into docs.
 
-Document the current engine capabilities (Filter, Project, Sort, Limit).
+[~] Keep the architecture document in sync:
 
-Call out upcoming features (aggregates, joins, ingestion).
-
-Explicitly track implemented vs planned vs deferred features.
+Needs explicit mention of new ORDER BY + aggregate capabilities, plus current copilot behavior.
 
 Improve developer docs
 
-Add or refine DEVELOPMENT.md with:
+[~] Add/refine DEVELOPMENT.md:
 
-local setup,
+Basic local setup and test commands exist informally; consolidating into a doc is still outstanding.
 
-test commands,
+[~] Document the currently supported SQL subset:
 
-how to run copilot evals,
+SELECT-only, single-table, simple WHERE, ORDER BY (single column), LIMIT, plus the new aggregate constraints.
 
-how to run benchmarks when they exist.
-
-Document the currently supported SQL subset:
-
-SELECT-only,
-
-single-table,
-
-WHERE with simple predicates,
-
-ORDER BY (single column, ASC/DESC),
-
-LIMIT.
-
-Document copilot endpoint behavior and current limitations (no joins/aggregates yet, behavior on unsupported requests).
-
+[~] Document copilot endpoint behavior and current limitations, now updated for aggregate awareness (even if some aggregate behavior is still guarded).

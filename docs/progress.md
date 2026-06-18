@@ -455,3 +455,43 @@ The log line includes the logger name, the message, and the request id.
 
 Net result: logging no longer crashes under either JSON or plain-text configuration, and this behavior is now guarded by tests.
 
+
+Progress log: 06/18/2026
+
+Aggregation and GROUP BY support
+
+Extended the parser to recognize aggregate functions (COUNT, SUM, AVG) and GROUP BY expressions, building an Aggregate logical node with group_keys and aggregates metadata.
+
+Implemented aggregate execution with Arrow-backed operators, including grouped aggregation (e.g., SUM(close) BY symbol) and global aggregates like COUNT(*).
+
+Added validation to reject invalid aggregate queries (e.g., mixing aggregated and non-aggregated columns without proper GROUP BY, or unsupported SELECT * with GROUP BY) and wired this through QueryService and /query/validate.
+
+Added tests for grouped sums on realistic demo data (prices) and for negative aggregate cases to lock in the MVP constraints.
+
+Projection alias handling
+
+Updated QueryParser.build_logical_plan so Project nodes carry a richer details structure, including both columns and a projections list of {source, output} pairs.
+
+Refactored the Project executor to:
+
+Select real source columns from the input Arrow table.
+
+Rename them to output/alias names in the result schema (so SELECT close AS price yields a column named price).
+
+Updated the query plan endpoint and parser unit tests to assert the new Project.details shape while preserving expectations for columns.
+
+Added execute-level tests to ensure:
+
+Aliases appear in the API columns list.
+
+Row dictionaries use alias keys (e.g., price not close).
+
+Aliases behave correctly with filters and grouped aggregates.
+
+ORDER BY integration confidence
+
+Confirmed ORDER BY planning still produces Sort logical nodes with the expected key metadata and sits in the correct position in the logical plan (Scan → Filter → Project → Sort → Limit).
+
+Verified that ORDER BY + LIMIT scenarios are covered by tests and remain green after the projection/aggregation refactors.
+
+All tests are green at the end of this work.
