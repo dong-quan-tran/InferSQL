@@ -119,3 +119,41 @@ def test_query_execute_orders_rows_after_filter(client: TestClient) -> None:
     closes = [row["close"] for row in data["rows"]]
     assert closes == sorted(closes, reverse=True)
     assert all(value > 100 for value in closes)
+
+
+def test_query_execute_global_count_star(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={"sql": "SELECT COUNT(*) AS row_count FROM prices"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["columns"] == ["row_count"]
+    assert data["row_count"] == 1
+    assert len(data["rows"]) == 1
+    assert data["rows"][0]["row_count"] == 5  # seeded demo table has 5 rows
+
+
+def test_query_execute_grouped_sum_by_symbol(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": "SELECT symbol, SUM(close) AS total_close FROM prices GROUP BY symbol"
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    # One row per symbol, same as number of input rows in demo data.
+    assert data["row_count"] == 5
+    assert data["columns"] == ["symbol", "total_close"]
+    assert len(data["rows"]) == 5
+
+    # Each symbol appears exactly once, and total_close equals the original close.
+    symbols = {row["symbol"] for row in data["rows"]}
+    assert symbols == {"AAPL", "MSFT", "NVDA", "GOOGL", "AMZN"}
+    for row in data["rows"]:
+        assert isinstance(row["total_close"], (int, float))

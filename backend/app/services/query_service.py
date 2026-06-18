@@ -261,12 +261,70 @@ class QueryService:
         available_columns = [field.name for field in schema]
         available_column_set = set(available_columns)
 
+        # Basic column existence check for all referenced columns.
         for column in columns:
             if column == "*":
                 continue
             if column not in available_column_set:
                 raise UnknownColumnError(
                     f"Unknown column '{column}' on dataset '{dataset_name}'"
+                )
+
+        # Aggregate + GROUP BY semantics (MVP):
+        #
+        # - If GROUP BY is present, every non-aggregated selected column must be
+        #   listed in GROUP BY.
+        # - Aggregate functions are allowed in the select list.
+        #
+        # We intentionally keep this rule simple and strict for now.
+        from sqlglot import exp  # local import to avoid polluting module top
+
+        group = expression.args.get("group")
+        if group is not None:
+            group_by_cols: set[str] = set()
+            for group_expr in group.expressions:
+                if isinstance(group_expr, exp.Column):
+                    group_by_cols.add(group_expr.name)
+                else:
+                    # For MVP, require plain column references in GROUP BY.
+                    raise UnsupportedQueryError(
+                        "Only plain column expressions are supported in GROUP BY right now"
+                    )
+
+            # Walk the select list to separate aggregates from plain columns.
+            select_expressions = expression.expressions or []
+            non_agg_columns: set[str] = set()
+
+            for item in select_expressions:
+                if isinstance(item, exp.Star):
+                    # SELECT * with GROUP BY is ambiguous for our MVP; reject for now.
+                    raise UnsupportedQueryError(
+                        "SELECT * with GROUP BY is not supported right now"
+                    )
+
+                if isinstance(item, exp.Alias):
+                    target = item.this
+                else:
+                    target = item
+
+                # Aggregate functions are allowed.
+                if isinstance(target, (exp.Count, exp.Sum, exp.Avg)):
+                    continue
+
+                if isinstance(target, exp.Column):
+                    non_agg_columns.add(target.name)
+                else:
+                    # Any non-aggregate expression in the select list is not supported yet.
+                    raise UnsupportedQueryError(
+                        "Only plain columns and simple aggregates are supported in grouped SELECT lists right now"
+                    )
+
+            # Enforce: every non-aggregated selected column must be in GROUP BY.
+            missing = sorted(non_agg_columns.difference(group_by_cols))
+            if missing:
+                missing_list = ", ".join(f"'{name}'" for name in missing)
+                raise UnsupportedQueryError(
+                    f"Columns {missing_list} must appear in GROUP BY or be aggregated"
                 )
 
         return SchemaReferenceSummary(
