@@ -82,3 +82,37 @@ def test_query_validate_rejects_unknown_column(client: TestClient) -> None:
     assert data["errors"] == ["Unknown column 'nope' on dataset 'prices'"]
     assert data["tables"] == ["prices"]
     assert data["columns"] == ["nope"]
+
+
+def test_query_validate_rejects_non_grouped_column_with_aggregate(client: TestClient) -> None:
+    response = client.post(
+        "/query/validate",
+        json={
+            "sql": "SELECT symbol, close, SUM(close) FROM prices GROUP BY symbol"
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["is_valid"] is False
+    assert any(
+        "must appear in GROUP BY or be aggregated" in err
+        for err in data["errors"]
+    )
+
+
+def test_query_validate_rejects_select_star_with_group_by(client: TestClient) -> None:
+    response = client.post(
+        "/query/validate",
+        json={
+            "sql": "SELECT * FROM prices GROUP BY symbol"
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["is_valid"] is False
+    assert any(
+        "SELECT * with GROUP BY is not supported right now" in err
+        for err in data["errors"]
+    )
