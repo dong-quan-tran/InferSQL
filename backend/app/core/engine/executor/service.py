@@ -11,6 +11,7 @@ from .project import ProjectOperator
 from .scan import TableScanOperator
 from .sort import SortOperator
 
+from .aggregate import AggregateOperator
 
 class QueryExecutor:
     def __init__(self, registry: DatasetRegistry) -> None:
@@ -19,6 +20,7 @@ class QueryExecutor:
         self.project = ProjectOperator()
         self.sort = SortOperator()
         self.limit = LimitOperator()
+        self.aggregate = AggregateOperator()
 
     def execute(self, plan: PlanNode) -> pa.Table:
         if plan.node_type == "TableScan":
@@ -37,6 +39,11 @@ class QueryExecutor:
                 operator=predicate["operator"],
                 value=predicate["value"],
             )
+
+        if plan.node_type == "Aggregate":
+            group_keys = plan.details.get("group_keys", [])
+            aggregates = plan.details.get("aggregates", [])
+            return self.aggregate.execute(input_table, group_keys, aggregates)
 
         if plan.node_type == "Project":
             return self.project.execute(input_table, plan.details["columns"])
