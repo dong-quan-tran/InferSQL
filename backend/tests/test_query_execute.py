@@ -157,3 +157,59 @@ def test_query_execute_grouped_sum_by_symbol(client: TestClient) -> None:
     assert symbols == {"AAPL", "MSFT", "NVDA", "GOOGL", "AMZN"}
     for row in data["rows"]:
         assert isinstance(row["total_close"], (int, float))
+
+
+def test_query_execute_respects_simple_alias(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={"sql": "SELECT close AS price FROM prices LIMIT 1"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["columns"] == ["price"]
+    assert data["row_count"] == 1
+    assert len(data["rows"]) == 1
+    row = data["rows"][0]
+    assert "price" in row
+    assert "close" not in row
+
+
+def test_query_execute_alias_with_filter(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={"sql": "SELECT close AS price FROM prices WHERE close > 100 LIMIT 2"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["columns"] == ["price"]
+    assert data["row_count"] == 2
+    assert len(data["rows"]) == 2
+    for row in data["rows"]:
+        assert "price" in row
+        assert "close" not in row
+        assert row["price"] > 100
+
+
+def test_query_execute_grouped_aggregate_aliases(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": "SELECT symbol, SUM(close) AS total_close FROM prices GROUP BY symbol"
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["columns"] == ["symbol", "total_close"]
+    assert data["row_count"] == 5
+
+    symbols = {row["symbol"] for row in data["rows"]}
+    assert symbols == {"AAPL", "MSFT", "NVDA", "GOOGL", "AMZN"}
+    for row in data["rows"]:
+        assert "total_close" in row
+        assert "SUM(close)" not in row
