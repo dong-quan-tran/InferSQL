@@ -11,8 +11,8 @@ from app.core.engine.physical_planner import PhysicalPlanner
 from app.core.logging import configure_logging
 from app.core.settings import Settings, get_settings
 from app.services.copilot_service import CopilotService
-from app.services.llm.ollama_provider import OllamaLLMProvider
-from app.services.llm.remote_provider import RemoteLLMProvider
+from app.services.llm.base import LLMProvider
+from app.services.llm.factory import build_llm_provider
 from app.services.query_compiler import QueryCompiler
 from app.services.query_runner import QueryRunner
 from app.services.query_service import QueryService
@@ -39,15 +39,17 @@ def build_query_service(settings: Settings) -> QueryService:
     )
 
 
-def build_llm_provider(settings: Settings):
-    if settings.llm_provider == "ollama":
-        return OllamaLLMProvider(
-            base_url=settings.ollama_base_url,
-            model=settings.ollama_model,
-            temperature=settings.llm_temperature,
-        )
-
-    return RemoteLLMProvider(model=settings.remote_llm_model)
+def build_provider(settings: Settings) -> LLMProvider:
+    return build_llm_provider(
+        provider=settings.llm_provider,
+        ollama_base_url=settings.ollama_base_url,
+        ollama_model=settings.ollama_model,
+        ollama_temperature=settings.llm_temperature,
+        gemini_api_key=settings.gemini_api_key,
+        gemini_model=settings.gemini_model,
+        openai_api_key=settings.openai_api_key,
+        openai_model=settings.openai_model,
+    )
 
 
 def bind_app_state(
@@ -55,7 +57,7 @@ def bind_app_state(
     settings: Settings,
     query_service: QueryService,
     copilot_service: CopilotService,
-    llm_provider,
+    llm_provider: LLMProvider,
 ) -> None:
     app.state.settings = settings
     app.state.dataset_registry = query_service.dataset_registry
@@ -74,7 +76,7 @@ async def lifespan(app: FastAPI):
     configure_logging(json_logs=settings.log_json, log_level=settings.log_level)
 
     query_service = build_query_service(settings=settings)
-    llm_provider = build_llm_provider(settings=settings)
+    llm_provider = build_provider(settings=settings)
     copilot_service = CopilotService(
         dataset_registry=query_service.dataset_registry,
         query_service=query_service,
