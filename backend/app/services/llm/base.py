@@ -12,4 +12,8 @@ class LLMProvider(Protocol):
     @property
     def model_name(self) -> str: ...
 
-    def generate_sql_candidate(self, question: str, schema_context: str) -> CopilotSqlCandidate: ...
+    def generate_sql_candidate(
+        self,
+        question: str,
+        schema_context: str,
+    ) -> CopilotSqlCandidate: ...
