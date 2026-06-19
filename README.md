@@ -1,228 +1,298 @@
 # InferSQL
 
-InferSQL is a unified data and AI platform that combines a vectorized SQL query engine, a low-latency model inference runtime, an LLM copilot, and end-to-end observability into one project.
+InferSQL is a Python-based analytical SQL engine with a schema-aware LLM copilot. It focuses on:
 
-The goal is to build something that feels closer to internal infrastructure at a quant firm or AI-native company than a typical portfolio CRUD app.
+- A small but solid **Arrow-backed query engine** (parse → logical plan → physical plan → execution).
+- A **FastAPI** backend for SQL validation, planning, and execution.
+- A guarded **natural-language-to-SQL copilot** with pluggable LLM providers (Ollama, Gemini, OpenAI).
+- Early **observability hooks** suitable for turning into a full tracing/logging story.
 
-## Overview
+The long-term vision is closer to internal infra at a quant/AI-native company than a typical CRUD app: a compact analytical engine, a catalog and feature-store layer, an inference slice, and a copilot sitting safely on top.
 
-At a high level, InferSQL brings together four capabilities:
+---
 
-- A vectorized query engine for analytical SQL execution over columnar data.
-- A feature serving and inference layer for low-latency ML predictions.
-- An LLM copilot for natural language to SQL, plan explanations, and operational workflows.
-- An observability stack built around traces, metrics, and logs correlated by request ID.
+## Current capabilities (engine and copilot)
 
-The project is designed to showcase systems engineering, backend architecture, performance benchmarking, and production-minded AI integration in one codebase.
+### Query engine
 
-## Core ideas
+The current engine is columnar and Arrow-based:
 
-### Vectorized query execution
+- **Data model:** Apache Arrow tables held in a `DatasetRegistry`.
+- **SQL pipeline:** `QueryParser` → logical plan → physical plan → `QueryRunner`/executor.
+- **Supported logical/physical operators (MVP):**
+  - `Scan` – read a named dataset from the in-memory registry.
+  - `Filter` – simple `WHERE` predicates on a single table.
+  - `Project` – select and rename columns, with alias preservation.
+  - `Sort` – `ORDER BY` on a single table, with ASC/DESC support.
+  - `Aggregate` – basic aggregates over Arrow:
+    - `COUNT`, including `COUNT(*)`.
+    - `SUM`.
+    - `AVG`.
+    - GROUP BY over one or more grouping keys.
+  - `Limit` – `LIMIT n`.
 
-InferSQL executes queries using columnar batches instead of processing one row at a time. The engine is intended to support a SQL pipeline of parsing, logical planning, physical planning, and execution with operators such as scan, filter, project, aggregate, sort, limit, and joins.
+The engine is intentionally narrow right now:
 
-### Low-latency inference
+- **SELECT-only**, single-table queries.
+- `WHERE` with simple comparisons (e.g., `column > 100`).
+- `ORDER BY` on one or more expressions on a single table.
+- `GROUP BY` + aggregates with a small, well-defined surface.
+- **No joins yet** – joins are explicitly treated as unsupported for now.
 
-The platform also includes an inference runtime with model registration, versioning, and controlled rollout strategies such as direct, shadow, canary, A/B, and rollback modes. Feature lookup is designed around an online store for fast retrieval and an offline computation path that integrates with the query engine itself.
+The logical plan encodes explicit node types and metadata:
 
-### LLM copilot
+- `Scan` – `{ "table": "prices" }`
+- `Filter` – `{ "predicate": { "column": "close", "operator": ">", "value": 100, "sql": "close > 100" } }`
+- `Project` – carries both:
+  - `columns`: the **output** column names in order.
+  - `projections`: `{ "source": ..., "output": ... }` pairs, so `SELECT close AS price` is represented as `{ "source": "close", "output": "price" }`.
+- `Aggregate` – `group_keys` plus `aggregates` entries like `{ "func": "SUM", "column": "close", "alias": "sum_close" }`.
+- `Sort` – `keys` as `{ "column": "close", "direction": "ASC" | "DESC" }`.
+- `Limit` – `{ "count": 10 }`.
 
-The copilot layer is meant to do more than chat. It translates natural language into safe SQL, explains execution plans, answers observability questions, and helps operate model deployments with confirmation and guardrails.
+Execution uses PyArrow tables and operators rather than row loops.
 
-### Observability
+### Copilot
 
-InferSQL is instrumented around the three pillars of observability: traces, metrics, and logs. The intended setup uses OpenTelemetry for instrumentation, Prometheus for metrics, Grafana for dashboards, Tempo for tracing, and Loki for logs, with `request_id` used to correlate activity across the stack.
+InferSQL includes a schema-aware, validation-first copilot:
 
-## Architecture
+- **Provider abstraction:**
+  - Pluggable LLM provider interface with:
+    - Ollama backend (local-first).
+    - Gemini backend via `google-genai`.
+    - OpenAI backend via the official `openai` client.
+  - A provider factory that supports `ollama`, `gemini`, `openai`, and `auto` mode (auto chooses based on configured keys).
+  - A **fallback provider** that wraps a primary provider with an Ollama fallback on errors.
 
-InferSQL is organized around a control plane and a data plane, with the copilot and observability layers spanning the system.
+- **Prompting and schema awareness:**
+  - A shared prompt builder that:
+    - Builds a system prompt with strict JSON-only, SQL-only instructions.
+    - Injects synonym guidance (e.g., `ticker → symbol`, `stock price → close`).
+    - Provides few-shot examples loaded from assets (not hard-coded in the provider).
+    - Attaches a JSON schema describing the expected `CopilotSqlCandidate` shape.
+  - A `CopilotSchemaSelector` that:
+    - Scores tables based on names, descriptions, columns, and sample values.
+    - Normalizes simple singular/plural forms.
+    - Uses synonym rules to improve matching.
+    - Returns the top-N relevant tables (with safe fallbacks).
+  - A `CopilotSchemaContextBuilder` that:
+    - Renders schema context text including table/column descriptions, aliases, and sample values.
+    - Uses the same metadata that powers the query engine/catalog.
+
+- **Validation and repair loop:**
+  - `CopilotService`:
+    - Takes a natural-language question.
+    - Uses the schema selector and context builder.
+    - Calls the chosen LLM provider to produce a `CopilotSqlCandidate`.
+    - Validates the candidate via the **same** `QueryService` path used by the core engine:
+      - Parse, plan, schema checks, supported features.
+    - If invalid, constructs a **repair prompt** including:
+      - Original question.
+      - Schema context.
+      - Previous SQL and validation errors.
+      - Requests a corrected SELECT-only SQL candidate (no joins yet, aggregates guarded).
+    - Repeats up to a configured max retries and returns a detailed `CopilotQueryResponse` including:
+      - Final candidate.
+      - Validation results (tables, columns, `has_where`, `has_group_by`, `has_order_by`, `has_limit`).
+      - Optional execution result if execution was requested and validation passed.
+      - Retry history and whether a repair was needed.
+
+- **Eval harness:**
+  - A copilot evaluation harness with:
+    - Cases for synonyms, hallucinated tables/columns, unsupported joins/aggregates.
+    - Per-category metrics and a summary structure.
+  - The harness is structured to later plug in regression thresholds and artifact persistence.
+
+---
+
+## API surface
+
+The backend is a FastAPI application that exposes:
+
+- `/query/validate` – parse and validate SQL, return metadata:
+  - `query_type`, `tables`, `columns`, `has_where`, `has_group_by`, `has_order_by`, `has_limit`.
+- `/query/plan` – return:
+  - Original and normalized SQL.
+  - High-level steps (parse, validate, plan, build physical plan).
+  - A JSON representation of the logical and physical plans.
+- `/query/execute` – validate, plan, execute, and return:
+  - Result rows and column names.
+  - Basic execution metadata (e.g., dataset name, row counts).
+- Copilot endpoints (names/paths may evolve) for:
+  - Natural language → SQL candidate generation.
+  - Validation and optional execution.
+  - Eval harness runs and summaries (primarily for internal use).
+
+All services are constructed in a FastAPI lifespan function that:
+
+- Loads settings (including LLM provider config).
+- Configures logging.
+- Builds:
+  - `QueryService` (registry, parser, planner, runner).
+  - LLM provider via the provider factory.
+  - `CopilotService` using those components.
+
+---
+
+## Configuration
+
+Configuration is handled via a Pydantic `Settings` model:
+
+- **Core app:**
+  - `app_name`, `app_version`, `environment`.
+  - `seed_demo_data` (e.g., a seeded `prices` table).
+- **Logging:**
+  - `log_json`, `log_level`.
+- **Observability:**
+  - `service_name`.
+  - `console_span_exporter_enabled`.
+- **LLM setup:**
+  - `llm_provider` – `"ollama"`, `"gemini"`, `"openai"`, or `"auto"`.
+  - `llm_temperature`.
+  - Ollama: `ollama_base_url`, `ollama_model`.
+  - Gemini: `gemini_api_key`, `gemini_model`.
+  - OpenAI: `openai_api_key`, `openai_model`.
+
+Settings are loaded once via a `get_settings()` helper and reused across the app.
+
+---
+
+## Observability (current state and direction)
+
+Right now:
+
+- OTEL-friendly middleware is wired in at the ASGI/FastAPI layer.
+- A small observability module builds an OpenTelemetry `Resource` using `service_name` and configuration.
+- Logging includes:
+  - `request_id` (for correlation).
+  - Stage tags like `"parse"`, `"plan"`, `"execute"` in `QueryService`.
+
+Planned next steps:
+
+- Standardize per-stage timings (parse/plan/execute) across `/validate`, `/plan`, `/execute`.
+- Add minimal spans around the query lifecycle.
+- Layer in structured logs with normalized SQL and status/outcome.
+- Add benchmark scripts and regression thresholds around latency.
+
+---
+
+## Repository structure (backend)
+
+This README is focused on the backend engine + copilot. The relevant folder is:
 
 ```text
-┌───────────────────────────────────────────────────────┐
-│                   CONTROL PLANE                        │
-│  Model Registry · Deployment Manager · Config Store    │
-│  Admin API · Auth · Rate Limiting                      │
-└───────────────────┬───────────────────────────────────┘
-                    │
-┌───────────────────▼───────────────────────────────────┐
-│                    DATA PLANE                          │
-│                                                        │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │         VECTORIZED QUERY ENGINE                 │   │
-│  │  SQL Parser → Logical Plan → Physical Plan      │   │
-│  │  Vectorized Operators (Arrow Record Batches)    │   │
-│  │  Scan · Filter · Project · Agg · Hash Join      │   │
-│  └────────────────────┬────────────────────────────┘   │
-│                       │                                │
-│  ┌────────────────────▼────────────────────────────┐   │
-│  │         FEATURE SERVING LAYER                   │   │
-│  │  Online Feature Store · Offline Cache           │   │
-│  │  Feature Registry · Versioned Feature Sets      │   │
-│  └────────────────────┬────────────────────────────┘   │
-│                       │                                │
-│  ┌────────────────────▼────────────────────────────┐   │
-│  │         INFERENCE RUNTIME                       │   │
-│  │  Model Serving · Canary Router · Shadow Engine  │   │
-│  │  Rollback · Batch Jobs                          │   │
-│  └─────────────────────────────────────────────────┘   │
-└───────────────────────────────────────────────────────┘
-                    │
-┌───────────────────▼───────────────────────────────────┐
-│                   LLM COPILOT LAYER                    │
-│  NL→SQL · Plan Explainer · Observability Assistant     │
-│  Inference Commander · Guardrails                      │
-└───────────────────────────────────────────────────────┘
-                    │
-┌───────────────────▼───────────────────────────────────┐
-│                OBSERVABILITY STACK                     │
-│  OpenTelemetry · Prometheus · Grafana · Tempo · Loki  │
-└───────────────────────────────────────────────────────┘
+backend/
+  └── app/
+      ├── api/          # FastAPI endpoints (query, copilot, etc.)
+      ├── core/
+      │   ├── engine/   # Parser, logical/physical planner, executor
+      │   ├── observability/
+      │   └── settings.py
+      ├── schemas/      # Pydantic models (plan nodes, copilot models, API responses)
+      └── services/
+          ├── query_service.py
+          ├── query_runner.py
+          ├── copilot_service.py
+          └── llm/      # Provider interfaces and implementations
+tests/
+  # Engine, service, copilot, and provider tests
 ```
 
-## Repository structure
+The broader “feature store / inference runtime / control plane” shown in the original vision is not fully implemented yet; those remain part of the roadmap.
 
-The project is organized around engine, inference, control plane, copilot, observability, frontend, configuration, tests, and docs.
+---
 
-```text
-infersql/
-├── backend/
-│   └── app/
-│       ├── api/
-│       ├── core/
-│       │   ├── engine/
-│       │   ├── inference/
-│       │   └── observability/
-│       └── schemas/
-├── frontend/
-├── configs/
-├── tests/
-├── scripts/
-└── docs/
-```
+## What’s implemented vs planned
 
-The exact layout may evolve as implementation changes, but the core system boundaries remain the same: query execution, serving, copilot, and observability.
+### Implemented
 
-## Features
+- Arrow-backed analytical query engine:
+  - Single-table SELECT queries with `WHERE`, `ORDER BY`, `GROUP BY`, aggregates, and `LIMIT`.
+  - Logical and physical planning with explicit node types.
+  - Execution over Arrow tables via a small set of operators.
+- In-memory dataset registry with demo tables (`seed_demo_data`).
+- Schema-aware copilot:
+  - Pluggable LLM provider layer (Ollama, Gemini, OpenAI, auto-selection, and fallback).
+  - Schema selection and context building.
+  - Strict JSON-only `CopilotSqlCandidate` contract with validation and repair.
+  - Eval harness for copilot quality.
+- FastAPI HTTP API for:
+  - SQL validation, planning, and execution.
+  - Copilot query and eval (names and contract may evolve).
+- Basic observability hooks at the middleware and service layers.
+- A reasonably comprehensive test suite covering:
+  - Parser and planner behavior.
+  - Query service, runner, and copilot flows.
+  - Provider factory and fallback behavior.
+  - Copilot eval harness behavior.
 
-Current and planned project capabilities include:
+### Planned / not yet built
 
-- SQL parsing, validation, planning, and execution.
-- Logical and physical plan generation.
-- Vectorized operators over columnar batches.
-- Request-scoped debug metadata and timing breakdowns.
-- OpenTelemetry instrumentation for traces and metrics.
-- Benchmark scripts for repeatable performance measurement.
-- Model registry and deployment workflows.
-- Online feature retrieval for inference.
-- Guardrailed natural-language-to-SQL workflows.
-- Dashboard and API surfaces for operational visibility.
+- **Joins:**
+  - Multi-table parsing, logical `Join` nodes, and a physical join operator (likely starting with inner equi-join).
+  - Clear “joins unsupported” errors and/or planner placeholders until execution is ready.
 
-## Example query flow
+- **Catalog and ingestion:**
+  - CSV and Parquet ingestion endpoints.
+  - Registry-backed metadata (schema, row count, source path, last loaded).
+  - Public schema introspection endpoints aligned with copilot schema context.
 
-A typical query path in InferSQL looks like this:
+- **Observability & performance:**
+  - Standardized parse/plan/execute timing in all endpoints.
+  - OTEL span instrumentation around the query lifecycle.
+  - Benchmark scripts and regression gates in CI.
 
-1. A client sends SQL or a natural-language request.
-2. The request is validated and normalized.
-3. SQL is parsed into an abstract syntax tree.
-4. A logical plan is produced and optimized.
-5. A physical plan is built from executable operators.
-6. The engine executes over columnar data batches.
-7. Results, plans, debug timings, and observability signals are returned or emitted.
+- **Feature store and inference slice:**
+  - Feature-set registry, small local feature store, and a minimal model/inference slice.
+  - End-to-end “feature lookup → model prediction” path reusing the query engine.
 
-This structure makes the project useful both as an application and as a learning artifact for database internals and backend systems design.
+- **Docs and developer UX:**
+  - Up-to-date architecture diagrams focused on the current engine + copilot.
+  - A clear “supported SQL subset” section.
+  - Developer docs for running copilot evals and (later) benchmarks.
 
-## Tech stack
+---
 
-InferSQL is built around a modern Python-first systems stack.
+## Running the backend locally
 
-| Area | Technology |
-|---|---|
-| Backend API | FastAPI |
-| Query engine data model | Apache Arrow / PyArrow |
-| Model serving | ONNX Runtime, PyTorch |
-| Feature store | Redis |
-| Metadata store | PostgreSQL |
-| Observability | OpenTelemetry, Prometheus, Grafana, Tempo, Loki |
-| Frontend | React, TypeScript |
-| Testing | pytest, Hypothesis |
-| Containerization | Docker Compose |
-
-## Development goals
-
-InferSQL is intended to demonstrate strong engineering signals in several areas:
-
-- Database internals, including planning and vectorized execution.
-- Low-latency backend design and performance measurement.
-- ML platform workflows such as registration, rollout, and rollback.
-- Production observability with correlated traces, metrics, and logs.
-- Safe LLM integration with explicit operational guardrails.
-
-That combination is what makes the project broader than a standalone query engine or a standalone model-serving demo.
-
-## Benchmarks
-
-Performance is a major part of the project story. Planned benchmark areas include:
-
-- Vectorized query execution vs row-loop baselines.
-- Query operator timings and end-to-end request durations.
-- Model inference throughput and P95/P99 latency.
-- Feature store lookup latency.
-- NL→SQL accuracy on a fixed evaluation set.
-- Deployment rollback response time after drift detection.
-
-As benchmark scripts mature, this README can be updated with concrete numbers.
-
-## API direction
-
-The platform is designed around a backend API that exposes query, model, deployment, feature, and observability workflows. Depending on the stage of implementation, endpoints may include validation, planning, execution, natural-language query translation, model registration, deployment updates, rollback, and metrics or drift inspection.
-
-## Observability and debugging
-
-A major design goal of InferSQL is that internal behavior should be inspectable, not hidden. Requests are intended to carry a request ID across layers, emit latency metrics, and expose enough plan and execution detail to support debugging, benchmarking, and performance tuning.
-
-Recent backend work also supports request-level debug timing metadata and a separation between HTTP request timing and query-specific timing.
-
-## Why this project matters
-
-InferSQL is meant to show the ability to work across multiple layers of a modern backend system rather than only building API endpoints. It combines systems programming concepts, ML infrastructure patterns, operational tooling, and AI-assisted workflows in a way that is useful for both learning and portfolio presentation.
-
-## Running locally
-
-Local setup will depend on which parts of the stack are implemented, but a typical developer workflow looks like this:
+From the `backend/` directory:
 
 ```bash
-# create and activate virtual environment
+# Create and activate virtual environment
 python -m venv .venv
+source .venv/bin/activate  # or .venv\Scripts\activate on Windows
 
-# install dependencies
+# Install dependencies
 pip install -r requirements.txt
 
-# run the backend API
+# Run tests
+python -m pytest
+
+# Run the API (dev)
 uvicorn app.main:app --reload
 ```
 
-If the full local stack is enabled, Docker Compose can be used to start supporting services such as PostgreSQL, Redis, Prometheus, Grafana, and the OpenTelemetry collector.
+By default, the app:
 
-```bash
-docker compose up --build
-```
+- Loads settings from environment variables / `.env`.
+- Seeds a demo dataset (e.g., `prices`) if `seed_demo_data=true`.
+- Exposes `/query` and copilot endpoints under the FastAPI app.
 
-## Roadmap
+Once running, you can:
 
-The project roadmap includes:
+- Hit `/docs` for interactive OpenAPI docs.
+- Use `/query/validate`, `/query/plan`, `/query/execute` for SQL.
+- Use copilot endpoints to experiment with NL → SQL workflows (assuming an LLM provider is configured).
 
-- Foundation and local infrastructure.
-- Core query engine operators.
-- SQL parser and planner.
-- Feature store integration.
-- Model registry and inference runtime.
-- Deployment routing and rollback logic.
-- Drift detection and observability expansion.
-- LLM copilot workflows.
-- Frontend integration.
-- Benchmarks, documentation, and CI polish.
+---
 
 ## Status
 
-InferSQL is an active build in progress. Some parts of the platform are already implemented, while others remain planned or partially scaffolded. The long-term vision is a cohesive system where analytical queries, inference, observability, and AI assistance all work together through a unified interface.
+InferSQL is actively evolving. The current focus is:
 
+1. **Engine completion:** solidifying ORDER BY semantics, aggregates, and GROUP BY behavior.
+2. **Catalog and ingestion:** CSV/Parquet loaders and a metadata-rich catalog.
+3. **Copilot safety and accuracy:** better evals, more guardrails, and richer schema awareness.
+4. **Observability and benchmarks:** turning the existing hooks into a real instrumentation story.
+
+The feature-store and inference runtime pieces remain on the roadmap and will build on top of this core engine and copilot foundation.
