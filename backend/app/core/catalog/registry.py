@@ -63,33 +63,35 @@ class DatasetRegistry:
         include_samples: bool = False,
         sample_limit: int = 3,
     ) -> dict:
-        table = self.get_table(name)
+        dataset = self._datasets.get(name)
+        if dataset is None:
+            raise DatasetNotFoundError(f"Unknown dataset '{name}'")
+
+        table = dataset.table
+        metadata = dataset.metadata
         schema = table.schema
-        metadata = self.get_metadata(name)
 
-        column_names = [field.name for field in schema]
-        types = {field.name: str(field.type) for field in schema}
-        column_descriptions = {
-            column_name: column_metadata.description
-            for column_name, column_metadata in metadata.columns.items()
-            if column_metadata.description
-        }
-
-        description = {
+        result = {
             "name": name,
             "description": metadata.description,
-            "columns": column_names,
-            "types": types,
-            "column_descriptions": column_descriptions,
+            "columns": [field.name for field in schema],
+            "types": {field.name: str(field.type) for field in schema},
+            "row_count": table.num_rows,
+            "column_descriptions": {
+                column_name: column_metadata.description
+                for column_name, column_metadata in metadata.columns.items()
+            },
+            "column_aliases": {},
+            "column_samples": {},
         }
 
         if include_samples:
-            description["sample_values"] = self._sample_values(
-                table=table,
+            result["column_samples"] = self._sample_values(
+                table,
                 sample_limit=sample_limit,
             )
 
-        return description
+        return result
 
     def list_tables(self) -> list[str]:
         return sorted(self._datasets.keys())
