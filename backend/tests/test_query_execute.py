@@ -213,3 +213,21 @@ def test_query_execute_grouped_aggregate_aliases(client: TestClient) -> None:
     for row in data["rows"]:
         assert "total_close" in row
         assert "SUM(close)" not in row
+
+
+def test_query_execute_order_by_sorts_nulls_last(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={"sql": "SELECT symbol, close FROM prices_nulls ORDER BY close LIMIT 10"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["columns"] == ["symbol", "close"]
+
+    rows = data["rows"]
+    assert [row["close"] for row in rows[:-1]] == sorted(
+        [row["close"] for row in rows[:-1]]
+    )
+    assert rows[-1]["close"] is None

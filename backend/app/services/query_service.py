@@ -209,6 +209,18 @@ class QueryService:
     def _seed_demo_data(self) -> None:
         from app.core.catalog.registry import DatasetColumnMetadata, DatasetMetadata
 
+        prices_metadata = DatasetMetadata(
+            description="Daily security prices for a small demo universe of stocks.",
+            columns={
+                "symbol": DatasetColumnMetadata(
+                    description="Ticker symbol such as AAPL, MSFT, NVDA, GOOGL, or AMZN."
+                ),
+                "close": DatasetColumnMetadata(
+                    description="Closing price for the security on the row."
+                ),
+            },
+        )
+
         prices = pa.table(
             {
                 "symbol": ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN"],
@@ -218,14 +230,26 @@ class QueryService:
         self.dataset_registry.register_table(
             "prices",
             prices,
+            metadata=prices_metadata,
+        )
+
+        prices_nulls = pa.table(
+            {
+                "symbol": ["AAPL", "MSFT", "NVDA"],
+                "close": [150.0, None, 120.0],
+            }
+        )
+        self.dataset_registry.register_table(
+            "prices_nulls",
+            prices_nulls,
             metadata=DatasetMetadata(
-                description="Daily security prices for a small demo universe of stocks.",
+                description="Demo prices table with null close values for ORDER BY behavior tests.",
                 columns={
                     "symbol": DatasetColumnMetadata(
-                        description="Ticker symbol such as AAPL, MSFT, NVDA, GOOGL, or AMZN."
+                        description="Ticker symbol such as AAPL, MSFT, or NVDA."
                     ),
                     "close": DatasetColumnMetadata(
-                        description="Closing price for the security on the row."
+                        description="Closing price for the security on the row; may be null in this demo fixture."
                     ),
                 },
             ),
