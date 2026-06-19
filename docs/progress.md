@@ -495,3 +495,14 @@ Confirmed ORDER BY planning still produces Sort logical nodes with the expected 
 Verified that ORDER BY + LIMIT scenarios are covered by tests and remain green after the projection/aggregation refactors.
 
 All tests are green at the end of this work.
+
+Progress log: 2026-06-19
+Tightened the catalog and registry layer to return richer, metadata-aware dataset descriptions and aligned unit tests for the updated shape (including samples).
+
+Implemented and wired a Copilot schema context builder that now includes column descriptions, aliases, and representative example values, and fixed its integration with prompt-assets.
+
+Added HTTP catalog endpoints and schemas to expose dataset metadata publicly, then exercised them with API tests.
+
+Cleaned up LLM/copilot schema-context behavior so all copilot and eval tests pass again (including the eval harness and selection tests).
+
+Got the entire backend test suite back to fully green (117 tests) after all catalog/copilot refactors.
