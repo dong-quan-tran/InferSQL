@@ -1,3 +1,11 @@
+Legend:
+
+[x] done today or earlier
+
+[~] partially done
+
+[ ] not started
+
 Phase 1: Query engine completion
 Add ORDER BY support
 
@@ -11,7 +19,7 @@ Support ascending and descending order.
 
 [~] Define/document null ordering behavior.
 
-Effective behavior is whatever Arrow’s sort uses by default; you still need to:
+Effective behavior is whatever Arrow’s sort uses by default; engine + tests exist, docs still needed.
 
 Decide and document “NULLs sort last” vs “first”.
 
@@ -43,7 +51,9 @@ Add aggregate physical operators (global and grouped).
 
 [~] Define MVP constraints clearly in docs:
 
-The implementation enforces some constraints via validation (e.g., non-grouped columns must appear in GROUP BY or be aggregated, SELECT * with GROUP BY rejected), but this is not yet fully written up in user-facing docs.
+Implementation enforces constraints via validation (e.g., non-grouped columns must appear in GROUP BY or be aggregated, SELECT * with GROUP BY rejected).
+
+Write this up in user-facing docs.
 
 Add tests for:
 
@@ -75,13 +85,15 @@ alias with grouped aggregates
 
 Add join groundwork
 
-Detect multi-table queries and join clauses in the parser layer (beyond rejecting them).
+[~] Detect multi-table queries and join clauses in the parser layer (beyond rejecting them).
 
-Decide first supported join type (probably INNER JOIN on equality) or explicitly reject all joins with structured errors.
+[~] Decide first supported join type (probably INNER JOIN on equality) or explicitly reject all joins with structured errors.
+
+You already have “joins unsupported” validation; it’s partially wired.
 
 [~] Add stable, user-friendly unsupported-join errors:
 
-You already have some validation behavior around “joins unsupported”, but this could be sharpened and tested more explicitly.
+Behavior exists in validation/eval tests, could still be sharpened.
 
 Add planner placeholders if execution is deferred, so the logical plan can represent a Join node even if there’s no physical join yet.
 
@@ -108,9 +120,9 @@ Add fixture-based ingestion tests for CSV and Parquet.
 
 Expand catalog metadata
 
-[~] Add schema introspection endpoint (list datasets, columns, types).
+Add schema introspection endpoint (list datasets, columns, types).
 
-Some metadata plumbing already exists in the DatasetRegistry and is used by copilot, but there is no separate public introspection endpoint yet.
+Implemented as catalog API + tests today.
 
 Prepare prompt-ready schema payload for copilot:
 
@@ -118,24 +130,28 @@ CopilotSchemaContextBuilder and metadata-rich descriptions are in place and wire
 
 [~] Return dataset metadata from the registry via API, not just internally for copilot.
 
-Copilot is consuming it; public-facing catalog endpoints are still to be added.
+Basic dataset + column metadata now exposed via catalog endpoints.
+
+Double-check that everything copilot uses (samples, descriptions, aliases) is either exposed or explicitly scoped to copilot.
 
 [~] Align introspection payload format with what copilot uses.
 
-The shape is essentially there; the missing piece is reusing or exposing it via an HTTP endpoint.
+Shapes are closely aligned through DatasetRegistry + CopilotSchemaContextBuilder.
+
+Decide and document the “public” catalog schema vs “LLM-facing” schema, and refactor if needed.
 
 Phase 3: Observability and performance
 Deepen execution instrumentation
 
 [~] Keep per-stage parse/plan/execute timing:
 
-Some timing exists in QueryService and logs; needs standardization and explicit tests or docs.
+Some timing/logging exists; standardization + tests/docs still to do.
 
 [~] Add structured logs for:
 
-request id
+[~] request id
 
-sql and normalized sql
+[~] sql and normalized sql
 
 [~] stage timings
 
@@ -145,7 +161,7 @@ Add minimal OpenTelemetry spans around query lifecycle (parse → plan → execu
 
 [~] Standardize debug metadata across /validate, /plan, /execute.
 
-They share some fields; still room to make the shape fully consistent.
+Shared fields exist; full normalization still pending.
 
 Expand benchmarks
 
@@ -162,13 +178,13 @@ Improve Ollama prompt quality
 
 [~] Add few-shot examples to the provider prompt:
 
-Prompt assets exist and are used; double-check all examples are loaded from assets and fully wired.
+Prompt assets exist and are used; worth re-validating wiring.
 
 Add synonym mapping guidance (ticker → symbol, stock price → close, etc.) and keep it in assets/config.
 
 [~] Add direct tests for prompt construction (shape, examples, synonyms, schema snippet).
 
-Some tests exist around prompt assets; there’s still room for stricter prompt snapshot tests.
+Some prompt-asset tests exist; snapshot / stricter tests are still open.
 
 Strengthen copilot validation
 
@@ -188,7 +204,7 @@ tables
 
 columns
 
-has_where, has_group_by, has_order_by, has_limit.
+has_where, has_group_by, has_order_by, has_limit
 
 Expand copilot eval coverage
 
@@ -196,11 +212,11 @@ Expand copilot eval coverage
 
 synonym queries (ticker, stock price, etc.)
 
-[~] ambiguous requests
+ambiguous requests
 
-[~] hallucinated tables
+hallucinated tables
 
-[~] hallucinated columns
+hallucinated columns
 
 unsupported joins
 
@@ -210,18 +226,18 @@ Track quality by category; generate summary.
 
 [~] Save eval summaries to disk per run and enforce regression thresholds.
 
-Summaries exist; writing them out and enforcing thresholds in CI is still to come.
+Summary exists; persistence + thresholding in CI still open.
 
 Schema-aware selection and context
 
-Add a question-aware schema selector (implemented as CopilotSchemaSelector with tokenization, synonyms, and scoring over table/column metadata and samples).
+Add a question-aware schema selector (CopilotSchemaSelector with tokenization, synonyms, and scoring over table/column metadata and samples).
 
 Integrate selector with CopilotSchemaContextBuilder.
 
 [~] Add metrics around selection behavior (tables selected per query, selection distribution, tie-in to eval outputs).
 
 Phase 5: Feature store and inference slice
-This phase is untouched so far:
+This phase is still untouched:
 
 Define the smallest viable feature-store slice (registry abstraction, definition format, materialization).
 
@@ -234,20 +250,20 @@ Keep architecture docs current
 
 [~] Add/extend a progress log.
 
-You’ve captured progress in chat; this needs to be written into docs.
+You’ve captured progress in chat; not yet written into repo docs.
 
 [~] Keep the architecture document in sync:
 
-Needs explicit mention of new ORDER BY + aggregate capabilities, plus current copilot behavior.
+Needs explicit mention of ORDER BY + aggregate capabilities, plus current copilot behavior.
 
 Improve developer docs
 
 [~] Add/refine DEVELOPMENT.md:
 
-Basic local setup and test commands exist informally; consolidating into a doc is still outstanding.
+Setup and test commands exist informally; need a consolidated doc.
 
 [~] Document the currently supported SQL subset:
 
-SELECT-only, single-table, simple WHERE, ORDER BY (single column), LIMIT, plus the new aggregate constraints.
+Implementation is there; a crisp doc section is still missing.
 
-[~] Document copilot endpoint behavior and current limitations, now updated for aggregate awareness (even if some aggregate behavior is still guarded).
+[~] Document copilot endpoint behavior and current limitations, updated for aggregate awareness.
