@@ -173,19 +173,27 @@ class QueryParser:
             )
 
         columns: list[str] = []
+        projections: list[dict[str, str]] = []
         for item in select_expressions:
             if isinstance(item, exp.Star):
-                columns.append("*")
+                projections.append({"source": "*", "output": "*"})
             elif isinstance(item, exp.Column):
-                columns.append(item.name)
+                projections.append({"source": item.name, "output": item.name})
             elif isinstance(item, exp.Alias):
-                columns.append(item.alias)
+                target = item.this
+                if isinstance(target, exp.Column):
+                    projections.append({"source": target.name, "output": item.alias})
+                else:
+                    projections.append({"source": item.alias, "output": item.alias})
             else:
-                columns.append(item.sql())
+                projections.append({"source": item.sql(), "output": item.sql()})
 
         current = PlanNode(
             node_type="Project",
-            details={"columns": columns},
+            details={
+                "columns": [projection["output"] for projection in projections],
+                "projections": projections,
+            },
             children=[current],
         )
 

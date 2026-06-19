@@ -27,7 +27,11 @@ def test_query_plan_returns_expected_shape(client: TestClient) -> None:
 
     project_node = logical_plan["children"][0]
     assert project_node["node_type"] == "Project"
-    assert project_node["details"] == {"columns": ["symbol", "close"]}
+    assert project_node["details"]["columns"] == ["symbol", "close"]
+    assert project_node["details"]["projections"] == [
+        {"source": "symbol", "output": "symbol"},
+        {"source": "close", "output": "close"},
+    ]
 
     scan_node = project_node["children"][0]
     assert scan_node["node_type"] == "Scan"
@@ -148,7 +152,11 @@ def test_query_plan_includes_sort_node_for_order_by_asc(client: TestClient) -> N
 
     project_node = sort_node["children"][0]
     assert project_node["node_type"] == "Project"
-    assert project_node["details"] == {"columns": ["symbol", "close"]}
+    assert project_node["details"]["columns"] == ["symbol", "close"]
+    assert project_node["details"]["projections"] == [
+        {"source": "symbol", "output": "symbol"},
+        {"source": "close", "output": "close"},
+    ]
 
     scan_node = project_node["children"][0]
     assert scan_node["node_type"] == "Scan"

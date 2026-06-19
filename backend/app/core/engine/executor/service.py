@@ -44,9 +44,13 @@ class QueryExecutor:
             group_keys = plan.details.get("group_keys", [])
             aggregates = plan.details.get("aggregates", [])
             return self.aggregate.execute(input_table, group_keys, aggregates)
-
+        
         if plan.node_type == "Project":
-            return self.project.execute(input_table, plan.details["columns"])
+            return self.project.execute(
+                input_table,
+                plan.details["columns"],
+                plan.details.get("projections"),
+            )
 
         if plan.node_type == "Sort":
             return self.sort.execute(input_table, plan.details["keys"])

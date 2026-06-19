@@ -68,7 +68,11 @@ def test_build_logical_plan_shapes_nodes() -> None:
 
     project = plan.children[0]
     assert project.node_type == "Project"
-    assert project.details == {"columns": ["symbol", "close"]}
+    assert project.details["columns"] == ["symbol", "close"]
+    assert project.details["projections"] == [
+        {"source": "symbol", "output": "symbol"},
+        {"source": "close", "output": "close"},
+    ]
 
     filter_node = project.children[0]
     assert filter_node.node_type == "Filter"
