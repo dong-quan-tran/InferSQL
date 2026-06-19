@@ -244,3 +244,6 @@ class QueryParser:
             except ValueError:
                 return node.this
         return node.sql()
+    
+    def has_join(self, expression: exp.Expression) -> bool:
+        return any(True for _ in expression.find_all(exp.Join))

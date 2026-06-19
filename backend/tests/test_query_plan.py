@@ -217,3 +217,19 @@ def test_query_plan_places_sort_after_filter(client: TestClient) -> None:
             "sql": "close > 100",
         }
     }
+
+
+def test_query_plan_rejects_join_query(client: TestClient) -> None:
+    response = client.post(
+        "/query/plan",
+        json={
+            "sql": (
+                "SELECT prices.symbol, sectors.sector "
+                "FROM prices "
+                "JOIN sectors ON prices.symbol = sectors.symbol"
+            )
+        },
+    )
+
+    assert response.status_code == 400, response.json()
+    assert response.json() == response.json()

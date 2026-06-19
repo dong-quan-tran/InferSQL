@@ -73,7 +73,7 @@ def test_validate_referenced_schema_rejects_multiple_tables() -> None:
 
     with pytest.raises(
         UnsupportedQueryError,
-        match="Only single-table queries are supported right now",
+        match="JOIN queries are not supported right now",
     ):
         service._validate_referenced_schema(
             "SELECT prices.symbol FROM prices, trades WHERE prices.symbol = trades.symbol"

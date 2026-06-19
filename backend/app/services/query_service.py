@@ -270,6 +270,11 @@ class QueryService:
         if not tables:
             raise UnsupportedQueryError("Query must reference a dataset")
 
+        if self.query_parser.has_join(expression):
+            raise UnsupportedQueryError(
+                "JOIN queries are not supported right now"
+            )
+
         if len(tables) > 1:
             raise UnsupportedQueryError(
                 "Only single-table queries are supported right now"

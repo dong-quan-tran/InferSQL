@@ -116,3 +116,24 @@ def test_query_validate_rejects_select_star_with_group_by(client: TestClient) ->
         "SELECT * with GROUP BY is not supported right now" in err
         for err in data["errors"]
     )
+
+
+def test_validate_rejects_join_query_with_explicit_message(client: TestClient) -> None:
+    response = client.post(
+        "/query/validate",
+        json={
+            "sql": (
+                "SELECT prices.symbol, sectors.sector "
+                "FROM prices "
+                "JOIN sectors ON prices.symbol = sectors.symbol"
+            )
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["is_valid"] is False
+    assert "JOIN queries are not supported right now" in data["errors"]
+    assert data["tables"] == ["prices", "sectors"]
+    assert data["query_type"] == "SELECT"
