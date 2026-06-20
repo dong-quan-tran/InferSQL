@@ -19,6 +19,8 @@ class DatasetColumnMetadata:
 class DatasetMetadata:
     description: str | None = None
     columns: dict[str, DatasetColumnMetadata] = field(default_factory=dict)
+    source_path: str | None = None
+    loaded_at: str | None = None
 
 
 @dataclass
@@ -77,6 +79,8 @@ class DatasetRegistry:
             "columns": [field.name for field in schema],
             "types": {field.name: str(field.type) for field in schema},
             "row_count": table.num_rows,
+            "source_path": metadata.source_path,
+            "loaded_at": metadata.loaded_at,
             "column_descriptions": {
                 column_name: column_metadata.description
                 for column_name, column_metadata in metadata.columns.items()
