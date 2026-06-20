@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 import pyarrow as pa
 import pyarrow.compute as pc
 
-
 class DatasetNotFoundError(Exception):
     pass
 

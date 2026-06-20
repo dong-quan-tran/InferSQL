@@ -1,71 +1,124 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 
-from app.core.catalog.registry import DatasetNotFoundError
-from app.core.exceptions import NotFoundError
+from app.api.dependencies import get_dataset_registry
+from app.core.catalog.registry import DatasetNotFoundError, DatasetRegistry
 from app.schemas.catalog import (
-    CatalogColumnResponse,
-    CatalogDatasetListResponse,
-    CatalogDatasetResponse,
+    DatasetColumnSummary,
+    DatasetDetailResponse,
+    DatasetIngestRequest,
+    DatasetIngestResponse,
+    DatasetListResponse,
+    DatasetSummary,
+)
+from app.services.ingestion_service import (
+    DatasetIngestionService,
+    UnsupportedDatasetFormatError,
 )
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
 
 
-def _to_dataset_response(summary: dict) -> CatalogDatasetResponse:
-    column_descriptions = summary.get("column_descriptions", {})
-    column_aliases = summary.get("column_aliases", {})
-    column_samples = summary.get("column_samples", {})
+def get_ingestion_service(
+    registry: DatasetRegistry = Depends(get_dataset_registry),
+) -> DatasetIngestionService:
+    return DatasetIngestionService(dataset_registry=registry)
 
-    columns = [
-        CatalogColumnResponse(
+
+def _build_column_summaries(description: dict) -> list[DatasetColumnSummary]:
+    column_descriptions = description.get("column_descriptions", {})
+    types = description.get("types", {})
+
+    return [
+        DatasetColumnSummary(
             name=column_name,
-            type=summary["types"][column_name],
+            type=types[column_name],
             description=column_descriptions.get(column_name),
-            aliases=column_aliases.get(column_name, []),
-            sample_values=[str(value) for value in column_samples.get(column_name, [])],
         )
-        for column_name in summary["columns"]
+        for column_name in description.get("columns", [])
     ]
 
-    return CatalogDatasetResponse(
-        name=summary["name"],
-        description=summary.get("description"),
-        row_count=summary.get("row_count", 0),
-        source_path=summary.get("source_path"),
-        loaded_at=summary.get("loaded_at"),
-        columns=columns,
+
+@router.get("/datasets", response_model=DatasetListResponse)
+def list_datasets(
+    registry: DatasetRegistry = Depends(get_dataset_registry),
+) -> DatasetListResponse:
+    datasets = []
+
+    for name in registry.list_tables():
+        description = registry.describe_table(name)
+        datasets.append(
+            DatasetSummary(
+                name=description["name"],
+                description=description.get("description"),
+                row_count=description["row_count"],
+                source_path=description.get("source_path"),
+                loaded_at=description.get("loaded_at"),
+                columns=_build_column_summaries(description),
+            )
+        )
+
+    return DatasetListResponse(datasets=datasets)
+
+
+@router.get("/datasets/{name}", response_model=DatasetDetailResponse)
+def get_dataset(
+    name: str,
+    registry: DatasetRegistry = Depends(get_dataset_registry),
+):
+    try:
+        description = registry.describe_table(name, include_samples=True)
+    except DatasetNotFoundError as exc:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "error": {
+                    "type": "NotFoundError",
+                    "message": str(exc),
+                }
+            },
+        )
+
+    return DatasetDetailResponse(
+        name=description["name"],
+        description=description.get("description"),
+        row_count=description["row_count"],
+        source_path=description.get("source_path"),
+        loaded_at=description.get("loaded_at"),
+        columns=_build_column_summaries(description),
+        column_aliases=description.get("column_aliases", {}),
+        column_samples=description.get("column_samples", {}),
     )
 
 
-@router.get("/datasets", response_model=CatalogDatasetListResponse)
-def list_datasets(request: Request) -> CatalogDatasetListResponse:
-    query_service = request.app.state.query_service
-
-    datasets = [
-        _to_dataset_response(
-            query_service.dataset_registry.describe_table(
-                table_name,
-                include_samples=True,
-            )
-        )
-        for table_name in query_service.dataset_registry.list_tables()
-    ]
-
-    return CatalogDatasetListResponse(datasets=datasets)
-
-
-@router.get("/datasets/{dataset_name}", response_model=CatalogDatasetResponse)
-def get_dataset(dataset_name: str, request: Request) -> CatalogDatasetResponse:
-    query_service = request.app.state.query_service
-
+@router.post("/ingest", response_model=DatasetIngestResponse)
+def ingest_dataset(
+    payload: DatasetIngestRequest,
+    ingestion_service: DatasetIngestionService = Depends(get_ingestion_service),
+):
     try:
-        summary = query_service.dataset_registry.describe_table(
-            dataset_name,
-            include_samples=True,
+        result = ingestion_service.load_file(
+            name=payload.name,
+            path=payload.path,
+            description=payload.description,
         )
-    except DatasetNotFoundError as exc:
-        raise NotFoundError(f"Unknown dataset '{dataset_name}'") from exc
+    except UnsupportedDatasetFormatError as exc:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": {
+                    "type": "ValidationError",
+                    "message": str(exc),
+                }
+            },
+        )
 
-    return _to_dataset_response(summary)
+    return DatasetIngestResponse(
+        name=result["name"],
+        row_count=result["row_count"],
+        source_path=result.get("source_path"),
+        loaded_at=result.get("loaded_at"),
+        description=result.get("description"),
+    )
