@@ -1,4 +1,13 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pyarrow as pa
+import pyarrow.parquet as pq
+
 from fastapi.testclient import TestClient
+
+from app.main import app
 
 
 def test_list_datasets_returns_catalog_metadata(client: TestClient) -> None:
@@ -40,3 +49,60 @@ def test_get_dataset_returns_404_for_unknown_dataset(client: TestClient) -> None
     data = response.json()
     assert data["error"]["type"] == "NotFoundError"
     assert data["error"]["message"] == "Unknown dataset 'missing_table'"
+
+
+
+client = TestClient(app)
+
+
+def test_ingest_csv_registers_dataset(tmp_path: Path) -> None:
+    csv_path = tmp_path / "prices.csv"
+    csv_path.write_text(
+        "symbol,close\nAAPL,189.12\nMSFT,425.27\n",
+        encoding="utf-8",
+    )
+
+    response = client.post(
+        "/catalog/ingest",
+        json={
+            "name": "prices_csv",
+            "path": str(csv_path),
+            "description": "CSV prices dataset",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "prices_csv"
+    assert data["row_count"] == 2
+    assert "loaded_at" in data
+    assert data["source_path"].endswith("prices.csv")
+    assert data["description"] == "CSV prices dataset"
+
+
+def test_ingest_parquet_registers_dataset(tmp_path: Path) -> None:
+    parquet_path = tmp_path / "fundamentals.parquet"
+    table = pa.table(
+        {
+            "symbol": ["AAPL", "MSFT"],
+            "market_cap": [3.1, 3.0],
+        }
+    )
+    pq.write_table(table, parquet_path)
+
+    response = client.post(
+        "/catalog/ingest",
+        json={
+            "name": "fundamentals_parquet",
+            "path": str(parquet_path),
+            "description": "Parquet fundamentals dataset",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "fundamentals_parquet"
+    assert data["row_count"] == 2
+    assert "loaded_at" in data
+    assert data["source_path"].endswith("fundamentals.parquet")
+    assert data["description"] == "Parquet fundamentals dataset"
