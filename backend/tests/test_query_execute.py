@@ -152,11 +152,20 @@ def test_query_execute_grouped_sum_by_symbol(client: TestClient) -> None:
     assert data["columns"] == ["symbol", "total_close"]
     assert len(data["rows"]) == 5
 
-    # Each symbol appears exactly once, and total_close equals the original close.
-    symbols = {row["symbol"] for row in data["rows"]}
+    # Each symbol appears exactly once.
+    rows = data["rows"]
+    symbols = {row["symbol"] for row in rows}
     assert symbols == {"AAPL", "MSFT", "NVDA", "GOOGL", "AMZN"}
-    for row in data["rows"]:
-        assert isinstance(row["total_close"], (int, float))
+
+    # Totals match seeded demo prices exactly.
+    totals_by_symbol = {row["symbol"]: row["total_close"] for row in rows}
+    assert totals_by_symbol == {
+        "AAPL": 189.12,
+        "MSFT": 425.27,
+        "NVDA": 1210.54,
+        "GOOGL": 176.33,
+        "AMZN": 182.41,
+    }
 
 
 def test_query_execute_respects_simple_alias(client: TestClient) -> None:
@@ -208,11 +217,15 @@ def test_query_execute_grouped_aggregate_aliases(client: TestClient) -> None:
     assert data["columns"] == ["symbol", "total_close"]
     assert data["row_count"] == 5
 
-    symbols = {row["symbol"] for row in data["rows"]}
+    rows = data["rows"]
+    symbols = {row["symbol"] for row in rows}
     assert symbols == {"AAPL", "MSFT", "NVDA", "GOOGL", "AMZN"}
-    for row in data["rows"]:
+
+    # Aliasing behavior: output uses alias, not raw expression.
+    for row in rows:
         assert "total_close" in row
         assert "SUM(close)" not in row
+        assert isinstance(row["total_close"], (int, float))
 
 
 def test_query_execute_order_by_sorts_nulls_last(client: TestClient) -> None:
