@@ -84,7 +84,42 @@ def test_query_validate_rejects_unknown_column(client: TestClient) -> None:
     assert data["columns"] == ["nope"]
 
 
-def test_query_validate_rejects_non_grouped_column_with_aggregate(client: TestClient) -> None:
+def test_query_validate_allows_global_count_star(client: TestClient) -> None:
+    response = client.post(
+        "/query/validate",
+        json={"sql": "SELECT COUNT(*) AS row_count FROM prices"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["is_valid"] is True
+    assert data["errors"] == []
+    assert data["tables"] == ["prices"]
+    assert data["has_group_by"] is False
+
+
+def test_query_validate_rejects_non_grouped_column_with_global_aggregate(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/query/validate",
+        json={"sql": "SELECT symbol, SUM(close) FROM prices"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["is_valid"] is False
+    assert any(
+        "must appear in GROUP BY or be aggregated" in err
+        for err in data["errors"]
+    )
+
+
+def test_query_validate_rejects_non_grouped_column_with_aggregate(
+    client: TestClient,
+) -> None:
     response = client.post(
         "/query/validate",
         json={
