@@ -13,6 +13,10 @@ class UnsupportedDatasetFormatError(Exception):
     pass
 
 
+class DatasetAlreadyExistsError(Exception):
+    pass
+
+
 class DatasetIngestionService:
     def __init__(self, dataset_registry: DatasetRegistry) -> None:
         self.dataset_registry = dataset_registry
@@ -22,7 +26,11 @@ class DatasetIngestionService:
         name: str,
         path: str,
         description: str | None = None,
+        overwrite: bool = False,
     ) -> dict:
+        if not overwrite and name in self.dataset_registry.list_tables():
+            raise DatasetAlreadyExistsError(f"Dataset '{name}' already exists")
+
         file_path = Path(path)
         suffix = file_path.suffix.lower()
 

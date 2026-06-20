@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from pathlib import Path
+from tempfile import NamedTemporaryFile
+
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import JSONResponse
 
 from app.api.dependencies import get_dataset_registry
@@ -14,14 +17,10 @@ from app.schemas.catalog import (
     DatasetSummary,
 )
 from app.services.ingestion_service import (
+    DatasetAlreadyExistsError,
     DatasetIngestionService,
     UnsupportedDatasetFormatError,
 )
-
-from pathlib import Path
-from tempfile import NamedTemporaryFile
-
-from fastapi import File, Form, UploadFile
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
 
@@ -101,6 +100,7 @@ def get_dataset(
 @router.post("/ingest", response_model=DatasetIngestResponse)
 def ingest_dataset(
     payload: DatasetIngestRequest,
+    overwrite: bool = Query(False),
     ingestion_service: DatasetIngestionService = Depends(get_ingestion_service),
 ):
     try:
@@ -108,6 +108,17 @@ def ingest_dataset(
             name=payload.name,
             path=payload.path,
             description=payload.description,
+            overwrite=overwrite,
+        )
+    except DatasetAlreadyExistsError as exc:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": {
+                    "type": "ConflictError",
+                    "message": str(exc),
+                }
+            },
         )
     except UnsupportedDatasetFormatError as exc:
         return JSONResponse(
@@ -128,10 +139,12 @@ def ingest_dataset(
         description=result.get("description"),
     )
 
+
 @router.post("/upload", response_model=DatasetIngestResponse)
 def upload_dataset(
     name: str = Form(...),
     description: str | None = Form(None),
+    overwrite: bool = Query(False),
     file: UploadFile = File(...),
     ingestion_service: DatasetIngestionService = Depends(get_ingestion_service),
 ):
@@ -146,6 +159,17 @@ def upload_dataset(
             name=name,
             path=temp_path,
             description=description,
+            overwrite=overwrite,
+        )
+    except DatasetAlreadyExistsError as exc:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": {
+                    "type": "ConflictError",
+                    "message": str(exc),
+                }
+            },
         )
     except UnsupportedDatasetFormatError as exc:
         return JSONResponse(

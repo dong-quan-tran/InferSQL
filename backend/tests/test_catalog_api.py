@@ -163,3 +163,75 @@ def test_upload_parquet_registers_dataset(tmp_path: Path) -> None:
     assert data["row_count"] == 2
     assert data["description"] == "Uploaded Parquet dataset"
     assert data["source_path"] is not None
+
+
+def test_ingest_rejects_duplicate_dataset_name_by_default(tmp_path: Path) -> None:
+    csv_path = tmp_path / "prices.csv"
+    csv_path.write_text(
+        "symbol,close\nAAPL,189.12\nMSFT,425.27\n",
+        encoding="utf-8",
+    )
+
+    first = client.post(
+        "/catalog/ingest",
+        json={
+            "name": "duplicate_prices",
+            "path": str(csv_path),
+            "description": "First load",
+        },
+    )
+    assert first.status_code == 200
+
+    second = client.post(
+        "/catalog/ingest",
+        json={
+            "name": "duplicate_prices",
+            "path": str(csv_path),
+            "description": "Second load",
+        },
+    )
+
+    assert second.status_code == 409
+    data = second.json()
+    assert data["error"]["type"] == "ConflictError"
+    assert data["error"]["message"] == "Dataset 'duplicate_prices' already exists"
+
+
+def test_ingest_allows_overwrite_when_requested(tmp_path: Path) -> None:
+    first_csv = tmp_path / "first.csv"
+    first_csv.write_text(
+        "symbol,close\nAAPL,189.12\nMSFT,425.27\n",
+        encoding="utf-8",
+    )
+
+    second_csv = tmp_path / "second.csv"
+    second_csv.write_text(
+        "symbol,close\nNVDA,1210.54\n",
+        encoding="utf-8",
+    )
+
+    first = client.post(
+        "/catalog/ingest",
+        json={
+            "name": "overwrite_prices",
+            "path": str(first_csv),
+            "description": "Initial version",
+        },
+    )
+    assert first.status_code == 200
+    assert first.json()["row_count"] == 2
+
+    second = client.post(
+        "/catalog/ingest?overwrite=true",
+        json={
+            "name": "overwrite_prices",
+            "path": str(second_csv),
+            "description": "Replacement version",
+        },
+    )
+
+    assert second.status_code == 200
+    data = second.json()
+    assert data["name"] == "overwrite_prices"
+    assert data["row_count"] == 1
+    assert data["description"] == "Replacement version"
