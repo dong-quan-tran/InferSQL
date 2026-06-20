@@ -106,3 +106,60 @@ def test_ingest_parquet_registers_dataset(tmp_path: Path) -> None:
     assert "loaded_at" in data
     assert data["source_path"].endswith("fundamentals.parquet")
     assert data["description"] == "Parquet fundamentals dataset"
+
+
+def test_upload_csv_registers_dataset(tmp_path: Path) -> None:
+    response = client.post(
+        "/catalog/upload",
+        data={
+            "name": "uploaded_prices",
+            "description": "Uploaded CSV dataset",
+        },
+        files={
+            "file": (
+                "prices.csv",
+                b"symbol,close\nAAPL,189.12\nMSFT,425.27\n",
+                "text/csv",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "uploaded_prices"
+    assert data["row_count"] == 2
+    assert data["description"] == "Uploaded CSV dataset"
+    assert data["source_path"] is not None
+
+
+def test_upload_parquet_registers_dataset(tmp_path: Path) -> None:
+    parquet_path = tmp_path / "upload.parquet"
+    table = pa.table(
+        {
+            "symbol": ["AAPL", "MSFT"],
+            "market_cap": [3.1, 3.0],
+        }
+    )
+    pq.write_table(table, parquet_path)
+
+    response = client.post(
+        "/catalog/upload",
+        data={
+            "name": "uploaded_fundamentals",
+            "description": "Uploaded Parquet dataset",
+        },
+        files={
+            "file": (
+                "fundamentals.parquet",
+                parquet_path.read_bytes(),
+                "application/octet-stream",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "uploaded_fundamentals"
+    assert data["row_count"] == 2
+    assert data["description"] == "Uploaded Parquet dataset"
+    assert data["source_path"] is not None

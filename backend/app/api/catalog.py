@@ -18,6 +18,11 @@ from app.services.ingestion_service import (
     UnsupportedDatasetFormatError,
 )
 
+from pathlib import Path
+from tempfile import NamedTemporaryFile
+
+from fastapi import File, Form, UploadFile
+
 router = APIRouter(prefix="/catalog", tags=["catalog"])
 
 
@@ -103,6 +108,44 @@ def ingest_dataset(
             name=payload.name,
             path=payload.path,
             description=payload.description,
+        )
+    except UnsupportedDatasetFormatError as exc:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": {
+                    "type": "ValidationError",
+                    "message": str(exc),
+                }
+            },
+        )
+
+    return DatasetIngestResponse(
+        name=result["name"],
+        row_count=result["row_count"],
+        source_path=result.get("source_path"),
+        loaded_at=result.get("loaded_at"),
+        description=result.get("description"),
+    )
+
+@router.post("/upload", response_model=DatasetIngestResponse)
+def upload_dataset(
+    name: str = Form(...),
+    description: str | None = Form(None),
+    file: UploadFile = File(...),
+    ingestion_service: DatasetIngestionService = Depends(get_ingestion_service),
+):
+    suffix = Path(file.filename or "").suffix.lower()
+
+    with NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+        temp_file.write(file.file.read())
+        temp_path = temp_file.name
+
+    try:
+        result = ingestion_service.load_file(
+            name=name,
+            path=temp_path,
+            description=description,
         )
     except UnsupportedDatasetFormatError as exc:
         return JSONResponse(
