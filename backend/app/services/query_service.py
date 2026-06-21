@@ -15,7 +15,8 @@ from app.core.exceptions import (
     UnsupportedQueryError,
 )
 from app.core.settings import Settings
-from app.schemas.query import SchemaReferenceSummary, ValidationSummary
+from app.schemas.query import PlanNode, SchemaReferenceSummary, ValidationSummary
+from app.services.datafusion_runner import DataFusionRunner
 from app.services.query_compiler import QueryCompiler
 from app.services.query_runner import QueryRunner
 
@@ -37,6 +38,7 @@ class QueryService:
         self.query_parser = query_parser
         self.query_compiler = query_compiler
         self.query_runner = query_runner
+        self.datafusion_runner = DataFusionRunner(dataset_registry)
 
         if self.settings.seed_demo_data and "prices" not in self.dataset_registry.list_tables():
             self._seed_demo_data()
@@ -163,13 +165,14 @@ class QueryService:
         )
 
         self._validate_referenced_schema(sql)
-        compiled = self.query_compiler.compile(sql)
-        execution_result = self.query_runner.run(
-            compiled.physical_plan,
+        normalized_sql = " ".join(sql.strip().split())
+        execution_result = self.datafusion_runner.run(
+            normalized_sql,
             limit=limit,
             offset=offset,
         )
 
+        compiled = self.query_compiler.compile(sql)
         dataset = None
         scan_node = self._find_node(compiled.logical_plan, "Scan")
         if scan_node is not None:
@@ -182,7 +185,7 @@ class QueryService:
 
         response = {
             "sql": sql,
-            "normalized_sql": compiled.normalized_sql,
+            "normalized_sql": normalized_sql,
             "row_count": execution_result.row_count,
             "columns": execution_result.columns,
             "rows": execution_result.rows,
