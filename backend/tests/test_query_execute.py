@@ -298,3 +298,65 @@ def test_query_execute_left_join_preserves_unmatched_rows(client: TestClient) ->
         {"symbol": "MSFT", "matched_close": None},
         {"symbol": "NVDA", "matched_close": 120.0},
     ]
+
+
+def test_query_execute_unknown_join_alias_returns_404(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT x.symbol
+                FROM prices AS p
+                JOIN prices_nulls AS n
+                  ON p.symbol = n.symbol
+            """
+        },
+    )
+
+    assert response.status_code == 404
+    payload = response.json()
+    assert payload["error"]["code"] == "UNKNOWNDATASETERROR"
+    assert "Unknown dataset or alias 'x'" in payload["error"]["message"]
+
+
+def test_query_execute_ambiguous_unqualified_column_returns_400(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT symbol
+                FROM prices AS p
+                JOIN prices_nulls AS n
+                  ON p.symbol = n.symbol
+            """
+        },
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "UNSUPPORTEDQUERYERROR"
+    assert "Ambiguous unqualified column 'symbol'" in payload["error"]["message"]
+
+def test_query_execute_select_from_prices_returns_zero_columns(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={"sql": "SELECT FROM prices"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["row_count"] == 5
+    assert payload["columns"] == []
+    assert payload["rows"] == [{}, {}, {}, {}, {}]
+
+
+def test_query_execute_unknown_column_returns_400(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={"sql": "SELECT missing_column FROM prices"},
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "UNKNOWNCOLUMNERROR"
+    assert "Unknown column 'missing_column'" in payload["error"]["message"]

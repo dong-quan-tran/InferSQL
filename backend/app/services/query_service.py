@@ -166,11 +166,15 @@ class QueryService:
 
         self._validate_referenced_schema(sql)
         normalized_sql = " ".join(sql.strip().split())
-        execution_result = self.datafusion_runner.run(
-            normalized_sql,
-            limit=limit,
-            offset=offset,
-        )
+
+        try:
+            execution_result = self.datafusion_runner.run(
+                normalized_sql,
+                limit=limit,
+                offset=offset,
+            )
+        except Exception as exc:
+            raise self._map_datafusion_error(exc) from exc
 
         compiled = self.query_compiler.compile(sql)
         dataset = None
@@ -374,8 +378,6 @@ class QueryService:
             ]
 
             if not matching_datasets:
-                if column_name == "*":
-                    continue
                 if len(available_columns_by_table) == 1:
                     dataset_name = next(iter(available_columns_by_table))
                     raise UnknownColumnError(
@@ -461,6 +463,30 @@ class QueryService:
                 raise UnsupportedQueryError(
                     f"Columns {missing_list} must appear in GROUP BY or be aggregated"
                 )
+
+    def _map_datafusion_error(self, exc: Exception) -> Exception:
+        message = str(exc)
+        lowered = message.lower()
+
+        if "sql parser error" in lowered or "parser error" in lowered:
+            return InvalidQuerySyntaxError(message)
+
+        if "schema error" in lowered or "field not found" in lowered:
+            return UnknownColumnError(message)
+
+        if "no table named" in lowered or "table not found" in lowered:
+            return UnknownDatasetError(message)
+
+        if "ambiguous" in lowered and "column" in lowered:
+            return UnsupportedQueryError(message)
+
+        if "plan(" in lowered or "planning error" in lowered:
+            return UnsupportedQueryError(message)
+
+        if "not implemented" in lowered or "unsupported" in lowered:
+            return UnsupportedQueryError(message)
+
+        return UnsupportedQueryError(f"DataFusion execution error: {message}")
 
     def _find_node(self, node, node_type: str):
         if node.node_type == node_type:
