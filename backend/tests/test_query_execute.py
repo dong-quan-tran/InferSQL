@@ -619,3 +619,18 @@ def test_query_execute_unknown_column_returns_normalized_error(client: TestClien
     payload = response.json()
     assert payload["error"]["code"] == "UNKNOWNCOLUMNERROR"
     assert "Unknown column 'missing_column'" in payload["error"]["message"]
+
+
+def test_query_execute_debug_metadata_includes_timings_and_engine(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute?debug=true",
+        json={"sql": "SELECT symbol, close FROM prices LIMIT 2"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    debug = payload.get("debug")
+    assert debug is not None
+    assert debug["stage"] == "execute"
+    assert debug["engine"] == "datafusion"
+    assert isinstance(debug["total_ms"], (int, float))

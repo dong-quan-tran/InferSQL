@@ -296,3 +296,18 @@ def test_query_plan_simple_query_keeps_custom_planner(client: TestClient) -> Non
     payload = response.json()
 
     assert payload["engine"] == "infersql-planner"
+
+
+def test_query_plan_debug_metadata_includes_engine(client: TestClient) -> None:
+    response = client.post(
+        "/query/plan?debug=true",
+        json={"sql": "SELECT symbol, close FROM prices LIMIT 5"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    debug = payload.get("debug")
+    assert debug is not None
+    assert debug["stage"] == "plan"
+    assert debug["engine"] in ("infersql-planner", "datafusion")
+    assert isinstance(debug["total_ms"], (int, float))

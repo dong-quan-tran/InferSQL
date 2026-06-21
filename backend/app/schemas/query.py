@@ -23,12 +23,12 @@ class PlanNode(BaseModel):
     children: list["PlanNode"] = Field(default_factory=list)
 
 
-class DebugInfo(BaseModel):
+class DebugMetadata(BaseModel):
     request_id: str
     total_ms: float
-    parse_ms: float | None = None
-    plan_ms: float | None = None
-    execute_ms: float | None = None
+    stage: str | None = None
+    engine: str | None = None
+    error_origin: str | None = None
 
 
 class ErrorDetail(BaseModel):
@@ -72,15 +72,15 @@ class QueryValidationResponse(BaseModel):
     sql: str
     normalized_sql: str
     is_valid: bool
-    query_type: str | None = None
-    errors: list[str] = Field(default_factory=list)
-    tables: list[str] = Field(default_factory=list)
-    columns: list[str] = Field(default_factory=list)
-    has_where: bool = False
-    has_group_by: bool = False
-    has_order_by: bool = False
-    has_limit: bool = False
-    debug: DebugInfo | None = None
+    query_type: str
+    errors: list[str]
+    tables: list[str]
+    columns: list[str]
+    has_where: bool
+    has_group_by: bool
+    has_order_by: bool
+    has_limit: bool
+    debug: DebugMetadata | None = None
 
 
 class QueryPlanResponse(BaseModel):
@@ -90,7 +90,7 @@ class QueryPlanResponse(BaseModel):
     steps: list[str]
     logical_plan: PlanNode
     physical_plan: PlanNode
-    debug: DebugInfo | None = None
+    debug: DebugMetadata | None = None
 
 
 class QueryExecuteResponse(BaseModel):
@@ -98,9 +98,9 @@ class QueryExecuteResponse(BaseModel):
     normalized_sql: str
     row_count: int
     columns: list[str]
-    rows: list[dict[str, Any]]
+    rows: list[dict]
     logical_plan: PlanNode | None = None
     physical_plan: PlanNode | None = None
-    debug: DebugInfo | None = None
+    debug: DebugMetadata | None = None
 
 PlanNode.model_rebuild()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 
 import pyarrow as pa
 from sqlglot import exp
@@ -43,6 +44,23 @@ class QueryService:
         if self.settings.seed_demo_data and "prices" not in self.dataset_registry.list_tables():
             self._seed_demo_data()
 
+    def _build_debug_info(
+        self,
+        *,
+        request_id: str | None,
+        total_ms: float,
+        stage: str,
+        engine: str | None,
+        error_origin: str | None = None,
+    ) -> dict:
+        return {
+            "request_id": request_id or "unknown",
+            "total_ms": total_ms,
+            "stage": stage,
+            "engine": engine,
+            "error_origin": error_origin,
+        }
+
     def _has_top_level_derived_from(self, expression: exp.Expression) -> bool:
         if not isinstance(expression, exp.Select):
             return False
@@ -53,14 +71,11 @@ class QueryService:
 
         return isinstance(from_clause.this, exp.Subquery)
 
-
     def _build_datafusion_plan_response(
         self,
         sql: str,
         normalized_sql: str,
         explain_rows: list[dict],
-        request_id: str | None = None,
-        debug: bool = False,
     ) -> dict:
         logical_lines: list[str] = []
         physical_lines: list[str] = []
@@ -78,7 +93,7 @@ class QueryService:
             elif "physical" in lowered:
                 physical_lines.append(plan_value)
 
-        response = {
+        return {
             "sql": sql,
             "normalized_sql": normalized_sql,
             "engine": "datafusion",
@@ -99,14 +114,6 @@ class QueryService:
                 "children": [],
             },
         }
-
-        if debug:
-            response["debug"] = {
-                "request_id": request_id or "unknown",
-                "total_ms": 0.0,
-            }
-
-        return response
 
     def _validate_referenced_tables_exist(self, sql: str) -> list[str]:
         normalized_sql = " ".join(sql.strip().split())
@@ -131,8 +138,6 @@ class QueryService:
         self,
         sql: str,
         normalized_sql: str,
-        request_id: str | None = None,
-        debug: bool = False,
     ) -> dict:
         try:
             explain_rows = self.datafusion_runner.explain(normalized_sql, verbose=True)
@@ -150,11 +155,10 @@ class QueryService:
             sql=sql,
             normalized_sql=normalized_sql,
             explain_rows=explain_rows,
-            request_id=request_id,
-            debug=debug,
         )
-    
+
     def validate(self, sql: str, request_id: str | None = None, debug: bool = False):
+        start_time = time.perf_counter()
         normalized_sql = " ".join(sql.strip().split())
 
         logger.info(
@@ -212,15 +216,21 @@ class QueryService:
             "has_limit": summary.has_limit,
         }
 
+        total_ms = (time.perf_counter() - start_time) * 1000.0
+
         if debug:
-            response["debug"] = {
-                "request_id": request_id or "unknown",
-                "total_ms": 0.0,
-            }
+            response["debug"] = self._build_debug_info(
+                request_id=request_id,
+                total_ms=total_ms,
+                stage="validate",
+                engine=None,
+            )
 
         return response
 
     def plan(self, sql: str, request_id: str | None = None, debug: bool = False):
+        start_time = time.perf_counter()
+
         logger.info(
             "planning query",
             extra={"stage": "plan", "dataset": None},
@@ -262,11 +272,15 @@ class QueryService:
                 extra={"stage": "plan", "dataset": dataset},
             )
 
+            total_ms = (time.perf_counter() - start_time) * 1000.0
+
             if debug:
-                response["debug"] = {
-                    "request_id": request_id or "unknown",
-                    "total_ms": 0.0,
-                }
+                response["debug"] = self._build_debug_info(
+                    request_id=request_id,
+                    total_ms=total_ms,
+                    stage="plan",
+                    engine="infersql-planner",
+                )
 
             return response
 
@@ -275,14 +289,22 @@ class QueryService:
         response = self._plan_with_datafusion(
             sql=sql,
             normalized_sql=normalized_sql,
-            request_id=request_id,
-            debug=debug,
         )
 
         logger.info(
             "query planned",
             extra={"stage": "plan", "dataset": None},
         )
+
+        total_ms = (time.perf_counter() - start_time) * 1000.0
+
+        if debug:
+            response["debug"] = self._build_debug_info(
+                request_id=request_id,
+                total_ms=total_ms,
+                stage="plan",
+                engine="datafusion",
+            )
 
         return response
 
@@ -294,6 +316,8 @@ class QueryService:
         limit: int = 100,
         offset: int = 0,
     ):
+        start_time = time.perf_counter()
+
         logger.info(
             "executing query",
             extra={"stage": "execute", "dataset": None},
@@ -346,11 +370,15 @@ class QueryService:
             "physical_plan": compiled.physical_plan.model_dump() if compiled else None,
         }
 
+        total_ms = (time.perf_counter() - start_time) * 1000.0
+
         if debug:
-            response["debug"] = {
-                "request_id": request_id or "unknown",
-                "total_ms": 0.0,
-            }
+            response["debug"] = self._build_debug_info(
+                request_id=request_id,
+                total_ms=total_ms,
+                stage="execute",
+                engine="datafusion",
+            )
 
         return response
 
