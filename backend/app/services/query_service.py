@@ -53,6 +53,107 @@ class QueryService:
 
         return isinstance(from_clause.this, exp.Subquery)
 
+
+    def _build_datafusion_plan_response(
+        self,
+        sql: str,
+        normalized_sql: str,
+        explain_rows: list[dict],
+        request_id: str | None = None,
+        debug: bool = False,
+    ) -> dict:
+        logical_lines: list[str] = []
+        physical_lines: list[str] = []
+
+        for row in explain_rows:
+            plan_type = str(row.get("plan_type", ""))
+            plan_value = str(row.get("plan", ""))
+
+            if not plan_value:
+                continue
+
+            lowered = plan_type.lower()
+            if "logical" in lowered:
+                logical_lines.append(plan_value)
+            elif "physical" in lowered:
+                physical_lines.append(plan_value)
+
+        response = {
+            "sql": sql,
+            "normalized_sql": normalized_sql,
+            "engine": "datafusion",
+            "steps": [
+                "parse_sql",
+                "extract_query_metadata",
+                "validate_sql",
+                "build_engine_plan",
+            ],
+            "logical_plan": {
+                "node_type": "DataFusionLogicalPlan",
+                "details": {"lines": logical_lines},
+                "children": [],
+            },
+            "physical_plan": {
+                "node_type": "DataFusionPhysicalPlan",
+                "details": {"lines": physical_lines},
+                "children": [],
+            },
+        }
+
+        if debug:
+            response["debug"] = {
+                "request_id": request_id or "unknown",
+                "total_ms": 0.0,
+            }
+
+        return response
+
+    def _validate_referenced_tables_exist(self, sql: str) -> list[str]:
+        normalized_sql = " ".join(sql.strip().split())
+        if not normalized_sql:
+            raise EmptyQueryError("SQL must not be empty")
+
+        expression = self.query_parser.parse(normalized_sql)
+        tables = self._extract_referenced_tables(expression)
+
+        if not tables and not self._has_top_level_derived_from(expression):
+            raise UnsupportedQueryError("Query must reference a dataset")
+
+        for dataset_name in tables:
+            try:
+                self.dataset_registry.get_schema(dataset_name)
+            except DatasetNotFoundError as exc:
+                raise UnknownDatasetError(f"Unknown dataset '{dataset_name}'") from exc
+
+        return tables
+
+    def _plan_with_datafusion(
+        self,
+        sql: str,
+        normalized_sql: str,
+        request_id: str | None = None,
+        debug: bool = False,
+    ) -> dict:
+        try:
+            explain_rows = self.datafusion_runner.explain(normalized_sql, verbose=True)
+        except (
+            InvalidQuerySyntaxError,
+            UnknownDatasetError,
+            UnknownColumnError,
+            UnsupportedQueryError,
+        ):
+            raise
+        except BaseException as exc:
+            raise self._map_datafusion_error(exc) from exc
+
+        return self._build_datafusion_plan_response(
+            sql=sql,
+            normalized_sql=normalized_sql,
+            explain_rows=explain_rows,
+            request_id=request_id,
+            debug=debug,
+        )
+    
     def validate(self, sql: str, request_id: str | None = None, debug: bool = False):
         normalized_sql = " ".join(sql.strip().split())
 
@@ -132,44 +233,56 @@ class QueryService:
         expression = self.query_parser.parse(normalized_sql)
         self.query_parser.validate_select_only(expression)
 
-        if not self._supports_custom_planner(expression):
-            raise UnsupportedQueryError(
-                "Planning currently supports only simple SELECT queries"
+        if self._supports_custom_planner(expression):
+            self._validate_referenced_schema(normalized_sql)
+            compiled = self.query_compiler.compile(sql)
+
+            dataset = None
+            scan_node = self._find_node(compiled.logical_plan, "Scan")
+            if scan_node is not None:
+                dataset = scan_node.details.get("table")
+
+            response = {
+                "sql": sql,
+                "normalized_sql": compiled.normalized_sql,
+                "engine": "infersql-planner",
+                "steps": [
+                    "parse_sql",
+                    "extract_query_metadata",
+                    "validate_sql",
+                    "build_logical_plan",
+                    "build_physical_plan",
+                ],
+                "logical_plan": compiled.logical_plan.model_dump(),
+                "physical_plan": compiled.physical_plan.model_dump(),
+            }
+
+            logger.info(
+                "query planned",
+                extra={"stage": "plan", "dataset": dataset},
             )
 
-        self._validate_referenced_schema(normalized_sql)
-        compiled = self.query_compiler.compile(sql)
+            if debug:
+                response["debug"] = {
+                    "request_id": request_id or "unknown",
+                    "total_ms": 0.0,
+                }
 
-        dataset = None
-        scan_node = self._find_node(compiled.logical_plan, "Scan")
-        if scan_node is not None:
-            dataset = scan_node.details.get("table")
+            return response
 
-        response = {
-            "sql": sql,
-            "normalized_sql": compiled.normalized_sql,
-            "engine": "infersql-planner",
-            "steps": [
-                "parse_sql",
-                "extract_query_metadata",
-                "validate_sql",
-                "build_logical_plan",
-                "build_physical_plan",
-            ],
-            "logical_plan": compiled.logical_plan.model_dump(),
-            "physical_plan": compiled.physical_plan.model_dump(),
-        }
+        self._validate_referenced_tables_exist(normalized_sql)
+
+        response = self._plan_with_datafusion(
+            sql=sql,
+            normalized_sql=normalized_sql,
+            request_id=request_id,
+            debug=debug,
+        )
 
         logger.info(
             "query planned",
-            extra={"stage": "plan", "dataset": dataset},
+            extra={"stage": "plan", "dataset": None},
         )
-
-        if debug:
-            response["debug"] = {
-                "request_id": request_id or "unknown",
-                "total_ms": 0.0,
-            }
 
         return response
 
@@ -668,6 +781,9 @@ class QueryService:
             return False
 
         if expression.find(exp.Subquery) is not None:
+            return False
+
+        if expression.find(exp.Join) is not None:
             return False
 
         if expression.find(exp.Union) is not None:

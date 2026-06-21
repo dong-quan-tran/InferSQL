@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pyarrow as pa
 from datafusion import SessionContext
 
@@ -29,6 +31,18 @@ class DataFusionRunner:
             return pa.table({})
 
         return pa.Table.from_batches(batches)
+
+    def explain(self, sql: str, verbose: bool = True) -> list[dict[str, Any]]:
+        ctx = self._build_context()
+        explain_sql = f"EXPLAIN {'VERBOSE ' if verbose else ''}{sql}"
+        dataframe = ctx.sql(explain_sql)
+        batches = dataframe.collect()
+
+        if not batches:
+            return []
+
+        table = pa.Table.from_batches(batches)
+        return table.to_pylist()
 
     def run(
         self,

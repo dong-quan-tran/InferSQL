@@ -236,3 +236,63 @@ def test_query_plan_reports_unknown_dataset_for_join_query(client: TestClient) -
     data = response.json()
     assert data["error"]["code"] == "UNKNOWNDATASETERROR"
     assert data["error"]["message"] == "Unknown dataset 'sectors'"
+
+
+def test_query_plan_broad_join_uses_datafusion_engine(client: TestClient) -> None:
+    response = client.post(
+        "/query/plan",
+        json={
+            "sql": """
+                SELECT p.symbol, p.close, pn.close
+                FROM prices AS p
+                INNER JOIN prices_nulls AS pn
+                    ON p.symbol = pn.symbol
+                ORDER BY p.symbol
+            """
+        },
+    )
+
+    assert response.status_code == 200, response.json()
+    payload = response.json()
+
+    assert payload["engine"] == "datafusion"
+    assert payload["logical_plan"]["node_type"] == "DataFusionLogicalPlan"
+    assert payload["physical_plan"]["node_type"] == "DataFusionPhysicalPlan"
+    assert isinstance(payload["logical_plan"]["details"]["lines"], list)
+    assert isinstance(payload["physical_plan"]["details"]["lines"], list)
+    
+
+def test_query_plan_subquery_in_from_uses_datafusion_engine(client: TestClient) -> None:
+    response = client.post(
+        "/query/plan",
+        json={
+            "sql": """
+                SELECT q.symbol
+                FROM (
+                    SELECT symbol, close
+                    FROM prices
+                    WHERE close > 180
+                ) AS q
+                ORDER BY q.symbol
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["engine"] == "datafusion"
+    assert payload["logical_plan"]["node_type"] == "DataFusionLogicalPlan"
+    assert payload["physical_plan"]["node_type"] == "DataFusionPhysicalPlan"
+
+
+def test_query_plan_simple_query_keeps_custom_planner(client: TestClient) -> None:
+    response = client.post(
+        "/query/plan",
+        json={"sql": "SELECT symbol, close FROM prices WHERE close > 180 ORDER BY symbol"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["engine"] == "infersql-planner"
