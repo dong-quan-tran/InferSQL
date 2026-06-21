@@ -552,3 +552,70 @@ def test_query_execute_union_deduplicates_rows(client: TestClient) -> None:
         {"symbol": "MSFT"},
         {"symbol": "NVDA"},
     ]
+
+def test_query_execute_invalid_union_shape_returns_unsupported(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT symbol FROM prices
+                UNION ALL
+                SELECT symbol, close FROM prices
+            """
+        },
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "UNSUPPORTEDQUERYERROR"
+    assert payload["error"]["message"] in (
+        "UNION queries must have the same number of columns",
+        "Query is not supported by the execution engine",
+    )
+
+
+def test_query_execute_malformed_subquery_returns_unsupported(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT symbol
+                FROM prices
+                WHERE symbol IN (SELECT FROM prices_nulls)
+            """
+        },
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "UNSUPPORTEDQUERYERROR"
+    assert payload["error"]["message"] in (
+        "Query must select at least one column or expression",
+        "Unsupported subquery shape",
+        "DataFusion execution error",
+        "Query is not supported by the execution engine",
+    )
+
+
+def test_query_execute_unknown_dataset_returns_normalized_error(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={"sql": "SELECT symbol FROM missing_table LIMIT 5"},
+    )
+
+    assert response.status_code == 404
+    payload = response.json()
+    assert payload["error"]["code"] == "UNKNOWNDATASETERROR"
+    assert payload["error"]["message"] == "Unknown dataset 'missing_table'"
+
+
+def test_query_execute_unknown_column_returns_normalized_error(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={"sql": "SELECT missing_column FROM prices"},
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "UNKNOWNCOLUMNERROR"
+    assert "Unknown column 'missing_column'" in payload["error"]["message"]

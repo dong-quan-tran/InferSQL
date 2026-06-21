@@ -454,7 +454,6 @@ class QueryService:
                 raise UnsupportedQueryError(
                     f"Ambiguous unqualified column '{column_name}' referenced across datasets: {dataset_list}"
                 )
-        
 
     def _extract_column_names(self, expression: exp.Expression) -> list[str]:
         names: list[str] = []
@@ -560,7 +559,7 @@ class QueryService:
         lowered = message.lower()
 
         if "panic" in lowered or exc.__class__.__name__ == "PanicException":
-            return UnsupportedQueryError(f"DataFusion execution error: {message}")
+            return UnsupportedQueryError("DataFusion execution error")
 
         if (
             "sql parser error" in lowered
@@ -568,7 +567,7 @@ class QueryService:
             or "parse error" in lowered
             or "syntax error" in lowered
         ):
-            return InvalidQuerySyntaxError(message)
+            return InvalidQuerySyntaxError("Invalid SQL syntax")
 
         if (
             "no table named" in lowered
@@ -579,19 +578,18 @@ class QueryService:
             ident = self._extract_quoted_identifier(message)
             if ident:
                 return UnknownDatasetError(f"Unknown dataset '{ident}'")
-            return UnknownDatasetError(message)
+            return UnknownDatasetError("Unknown dataset")
 
         if (
             "ambiguous reference to unqualified field" in lowered
             or ("ambiguous" in lowered and "column" in lowered)
             or ("ambiguous" in lowered and "field" in lowered)
         ):
-            return UnsupportedQueryError(message)
+            return UnsupportedQueryError("Ambiguous column reference")
 
         if (
             "field not found" in lowered
             or "no field named" in lowered
-            or "schema error" in lowered
             or "schemaerror(fieldnotfound" in lowered
             or "unqualified_field_not_found" in lowered
             or "unresolved column" in lowered
@@ -600,7 +598,13 @@ class QueryService:
             ident = self._extract_quoted_identifier(message)
             if ident:
                 return UnknownColumnError(f"Unknown column '{ident}'")
-            return UnknownColumnError(message)
+            return UnknownColumnError("Unknown column")
+
+        if "union queries must have the same number of columns" in lowered:
+            return UnsupportedQueryError("UNION queries must have the same number of columns")
+
+        if "invalid subquery" in lowered or ("subquery" in lowered and "not supported" in lowered):
+            return UnsupportedQueryError("Unsupported subquery shape")
 
         if (
             "not implemented" in lowered
@@ -615,9 +619,9 @@ class QueryService:
             or "incompatible types" in lowered
             or "non-aggregate expressions" in lowered
         ):
-            return UnsupportedQueryError(message)
+            return UnsupportedQueryError("Query is not supported by the execution engine")
 
-        return UnsupportedQueryError(f"DataFusion execution error: {message}")
+        return UnsupportedQueryError("DataFusion execution error")
 
     def _find_node(self, node: PlanNode, node_type: str):
         if node.node_type == node_type:
@@ -676,7 +680,10 @@ class QueryService:
             return False
 
         where = expression.args.get("where")
-        if where is not None and not isinstance(where.this, (exp.EQ, exp.NEQ, exp.GT, exp.GTE, exp.LT, exp.LTE)):
+        if where is not None and not isinstance(
+            where.this,
+            (exp.EQ, exp.NEQ, exp.GT, exp.GTE, exp.LT, exp.LTE),
+        ):
             return False
 
         return True
