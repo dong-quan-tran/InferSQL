@@ -510,7 +510,6 @@ Got the entire backend test suite back to fully green (117 tests) after all cata
 
 Progress log: 06/20/2026
 
-2026-06-20
 Switched query execution from the custom physical executor path to a new DataFusion-backed execution path for /query/execute, while keeping the API output stable as row_count, columns, and rows.
 
 Added and wired a new DataFusionRunner that builds a SessionContext, registers in-memory Arrow tables from DatasetRegistry, executes SQL, collects result batches, and converts them back into the existing execution response model.
@@ -527,272 +526,53 @@ Updated older tests that assumed joins must fail so they now reflect the new beh
 
 Verified that the full backend test suite is green after the migration slice, which means the DataFusion-backed execute path is stable enough to build on next.
 
+Progress log: 06/21/2026
 
+Engine and planning
+Ensured /query/execute consistently routes through DataFusion for all supported SQL, with the custom engine restricted to reference planning for simple single-table queries.
 
+Implemented a DataFusion-backed /query/plan path for broad SQL:
 
+Simple single-table queries still use the legacy logical/physical planner.
 
+Joins, subqueries, and set operations now use a DataFusion EXPLAIN-based planner.
 
+Plan responses for broad queries are mapped into the existing logical_plan / physical_plan JSON shape while preserving engine metadata.
 
-Legend:
+Validation and SQL surface
+Relaxed validation so it no longer rejects joins or subqueries-in-FROM by default.
 
-not started
+Confirmed that:
 
-[~] partially done
+Multi-table joins and subqueries can execute and plan successfully.
 
-done
+Schema checks (dataset and column existence, ambiguous unqualified columns) still run at the product level.
 
-Phase 0: Freeze scope
-Define the August finish line clearly:
+Aligned /query/plan behavior with /query/execute for broad SQL, using lightweight table-existence validation before delegating to DataFusion.
 
-broad analytical SQL support for registered datasets
+Error normalization
+Centralized mapping of DataFusion parse/planning/execution errors into the existing product error types:
 
-English-to-SQL copilot still works
+InvalidQuerySyntaxError
 
-existing API shape mostly preserved
+UnknownDatasetError
 
-docs + tests + basic observability included
+UnknownColumnError
 
-Decide what is explicitly out of scope for August:
+UnsupportedQueryError
 
-full ANSI parity
+Added coverage for:
 
-DML/DDL beyond what product needs
+Union column-count mismatches.
 
-full cost-based optimization work
+Invalid/unsupported subquery shapes.
 
-enterprise auth/governance
+Unknown datasets, unknown columns, and ambiguous column references.
 
-Decide whether the old custom engine remains:
+Ensured that both /query/plan and /query/execute now return stable, tested error shapes for broad SQL failures.
 
-as fallback for narrow queries, or
-
-as legacy/reference code only
-
-Phase 1: Architecture decision
-Write a short migration note in repo docs:
-
-current custom engine role
-
-target DataFusion role
-
-what layers remain custom
-
-Decide the planning story for /query/plan:
-
-keep current product-level plan only for narrow queries
-
-return a simplified plan summary for broad queries
-
-optionally expose DataFusion EXPLAIN
-
-Decide error normalization strategy:
-
-parse/validation errors from product layer
-
-engine planning/execution errors normalized from DataFusion
-
-Phase 5: Redesign validation
-[~] Simplify validation so it no longer hand-implements full SQL semantics unnecessarily.
-
-[~] Keep product-level validation for:
-
-query must be allowed statement type
-
-datasets must be registered
-
-tables/columns should be known where feasible
-
-optional product guardrails
-
-Remove or relax current blockers that assume narrow SQL only:
-
-blanket join rejection
-
-blanket multi-table rejection
-
-Remove or relax current blockers that assume narrow SQL only:
-
-over-strict aggregate restrictions when DataFusion can validate correctly
-
-Decide whether validation should:
-
-use SQLGlot for metadata extraction only, or
-
-call DataFusion planning/EXPLAIN as part of validation
-
-Normalize validation errors into your current API error shape.
-
-Phase 6: Metadata and schema alignment
-Make sure table metadata in your registry is the source of truth for:
-
-table names
-
-column names
-
-descriptions
-
-aliases
-
-sample values if present
-
-Ensure copilot schema context and execution engine use the same registered datasets.
-
-Decide how DataFusion sees dataset names:
-
-exact registry names
-
-namespaced/catalog style names
-
-Add tests that validate schema consistency between:
-
-registry
-
-catalog endpoints
-
-copilot schema context
-
-DataFusion registration
-
-Phase 7: Catalog and ingestion
-Finish CSV loading.
-
-Finish Parquet loading.
-
-Register loaded datasets automatically in the registry.
-
-Store metadata:
-
-row count
-
-schema
-
-source path
-
-loaded timestamp
-
-Add ingestion tests for:
-
-CSV
-
-Parquet
-
-duplicate table names
-
-invalid schema/file handling
-
-If useful, support file-backed DataFusion registration for loaded datasets:
-
-register_csv
-
-register_parquet
-
-Phase 8: Broaden SQL capability tests
-Add execute tests for joins:
-
-inner join on equality
-
-left join
-
-join with alias references
-
-Add execute tests for subqueries:
-
-scalar subquery
-
-IN (subquery)
-
-subquery in FROM
-
-Add tests for HAVING.
-
-Add tests for UNION / UNION ALL. DataFusion supports SQL set operators including UNION, INTERSECT, and EXCEPT.
-
-Add tests for richer expressions:
-
-arithmetic in SELECT
-
-expressions in ORDER BY
-
-expressions with aliases
-
-Add window function tests if time allows:
-
-ROW_NUMBER()
-
-LAG()
-
-SUM(...) OVER (...)
-
-Phase 9: Copilot migration
-Update prompt instructions to reflect broader SQL support.
-
-Add few-shot examples for:
-
-joins
-
-grouped queries with HAVING
-
-subqueries
-
-union queries
-
-Update repair prompts so they no longer over-reject joins if joins are now supported.
-
-Keep product safety rules explicit in the prompt:
-
-only registered datasets
-
-no made-up columns
-
-prefer simple valid SQL
-
-Expand eval coverage:
-
-multi-table join requests
-
-ambiguous join requests
-
-hallucinated join keys
-
-grouped + having requests
-
-nested subquery requests
-
-Track category metrics for broad-SQL copilot quality.
-
-Phase 10: Error handling and UX
-Normalize DataFusion parse/planning/execution errors into your API error format.
-
-Keep error messages user-friendly:
-
-unknown table
-
-unknown column
-
-ambiguous column
-
-unsupported syntax if still applicable
-
-Distinguish:
-
-product validation failure
-
-engine planning failure
-
-runtime execution failure
-
-Add tests for broad-SQL failure cases:
-
-unknown join table
-
-unknown join column
-
-ambiguous column name
-
-malformed subquery
-
-Phase 11: Observability
-Standardize debug metadata across:
+Observability (minimal)
+Introduced timing-based debug metadata (using time.perf_counter) for:
 
 /query/validate
 
@@ -800,147 +580,25 @@ Standardize debug metadata across:
 
 /query/execute
 
-Add stage timings:
+Standardized a debug object shape with:
 
-validate
+request_id
 
-copilot_generate
+total_ms
 
-copilot_repair
+stage (“validate”, “plan”, “execute”)
 
-execute
+engine (“infersql-planner” or “datafusion”)
 
-Add structured logs for:
+error_origin (placeholder for future tagging)
 
-request id
+Added tests to assert the presence and shape of debug metadata on debug=true responses.
 
-normalized sql
+Test suite
+Brought the full backend test suite to green, including:
 
-engine used
+Broad-join planning tests that assert DataFusion usage for complex queries.
 
-status/outcome
+Subquery-in-FROM planning and execution tests.
 
-Add minimal OTEL spans around:
-
-validation
-
-execution
-
-copilot generation/repair
-
-Phase 12: Benchmarks
-Build a benchmark script comparing:
-
-current custom engine
-
-DataFusion-backed execution
-
-Benchmark core query classes:
-
-filter/project/limit
-
-aggregate/group by
-
-order by + limit
-
-join
-
-Benchmark at increasing sizes:
-
-1k
-
-10k
-
-100k
-
-1M rows
-
-Save benchmark summaries to disk.
-
-Add simple regression thresholds or at least manual benchmark baselines.
-
-Phase 13: Docs
-Update README.md for DataFusion-backed broad SQL execution.
-
-Update DEVELOPMENT.md:
-
-supported SQL surface
-
-what is validated by product layer vs engine layer
-
-current limitations
-
-Add a migration note:
-
-why DataFusion was adopted
-
-what parts of the original custom engine remain
-
-Add examples:
-
-join query
-
-subquery
-
-having query
-
-union query
-
-copilot NL → SQL examples
-
-Document known limitations honestly.
-
-Phase 14: Release prep
-Run full test suite cleanly.
-
-Add at least one end-to-end demo scenario over 2–3 datasets.
-
-Verify copilot + execute path with broad SQL examples.
-
-Clean old TODOs and docs so they reflect the new architecture.
-
-Tag a release candidate for August delivery.
-
-First 14-day execution plan
-Days 1–2
-Freeze scope and write migration note.
-
-Decide:
-
-/query/plan behavior for broad SQL
-
-Days 9–10
-[~] Add broad-SQL smoke tests:
-
-join
-
-Add broad-SQL smoke tests:
-
-having
-
-union
-
-subquery
-
-Days 11–12
-[~] Relax/rewrite validator for broad SQL.
-
-Normalize DataFusion errors.
-
-Days 13–14
-Update copilot prompt/rules for joins and broader SQL.
-
-Add first broad-SQL copilot eval cases.
-
-Definition of done for August
-Users can query registered datasets with broad analytical SQL through the same API. DataFusion already provides the broad SQL foundation, including joins and other analytical features, but more product integration work remains.
-
-Copilot can generate valid SQL for common single-table and multi-table questions.
-
-[~] Validation still protects schema correctness and product rules.
-
-Results return in a stable documented response shape.
-
-Catalog/ingestion is usable for real CSV/Parquet datasets.
-
-Basic logs, timings, benchmarks, and docs are in place.
+New tests asserting normalized error responses and debug metadata.

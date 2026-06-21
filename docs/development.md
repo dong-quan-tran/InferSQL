@@ -4,7 +4,7 @@
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate
+. .venv/Scripts/activate  # or source .venv/bin/activate on Unix
 pip install -r requirements.txt
 ```
 
@@ -14,158 +14,236 @@ pip install -r requirements.txt
 python -m pytest
 ```
 
-## Supported SQL subset
+All broad-SQL work should land with tests. The full suite includes:
 
-InferSQL currently supports a small analytical SQL subset focused on single-table `SELECT` queries over Arrow-backed datasets.
+- unit tests for parser, planner, validator, and runner,
+- API tests for `/query/validate`, `/query/plan`, `/query/execute`,
+- smoke tests for copilot and catalog integration.
 
-## Supported SQL subset
+## Current SQL surface (developer view)
 
-InferSQL currently supports a small analytical SQL subset focused on single-table `SELECT` queries over Arrow-backed datasets.
+InferSQL currently supports a **broad but explicit analytical SQL subset** over registered datasets. DataFusion provides the underlying engine [web:26][web:243][web:16]; InferSQL exposes the subset that is tested and integrated with product validation.
 
-### Supported
+This file is the ground truth for what is **actually supported and tested**.
 
-- `SELECT` queries only.
-- Single-table queries.
-- Plain column projection, for example:
-  - `SELECT symbol FROM prices`
-  - `SELECT symbol, close FROM prices`
-- Projection aliases, for example:
-  - `SELECT close AS price FROM prices`
-- `WHERE` filters on simple column comparisons.
-- `ORDER BY` on projected/queryable columns.
-- `ASC` and `DESC` sort direction.
-- `LIMIT`.
-- Basic aggregate functions:
-  - `COUNT(*)`
-  - `COUNT(column)`
-  - `SUM(column)`
-  - `AVG(column)`
-- Global aggregates (no `GROUP BY`), for example:
-  - `SELECT COUNT(*) AS row_count FROM prices`
-- `GROUP BY` with MVP validation rules.
+### Supported (high-level)
 
-### Current ORDER BY behavior
+- `SELECT` queries only (no DML/DDL).
+- Single-table and multi-table queries over registered datasets.
+- Joins:
+  - `INNER JOIN`.
+  - Additional join types (e.g., `LEFT JOIN`) where tests exist.
+- Subqueries:
+  - `IN (subquery)`.
+  - Subqueries in `FROM` (derived tables).
+  - Some scalar subqueries (as tests are added).
+- Set operations:
+  - `UNION` / `UNION ALL`.
+  - Column-count and type compatibility enforced by the engine.
+- Projection:
+  - Plain column projection.
+  - Projection aliases.
+  - Simple expressions in `SELECT` (as validated by tests).
+- `WHERE` filters:
+  - Column-vs-literal comparisons (e.g., `=`, `!=`, `<`, `<=`, `>`, `>=`).
+  - A subset of more complex expressions (where tested).
+- `ORDER BY`:
+  - On projected or queryable columns.
+  - `ASC` and `DESC`.
+- `LIMIT` (with offset).
+- Aggregates:
+  - Basic aggregates such as `COUNT`, `SUM`, `AVG`.
+  - Grouped aggregation with product-level guardrails.
+- Basic support for **normalized error behavior**:
+  - syntax errors,
+  - unknown datasets,
+  - unknown columns,
+  - ambiguous/unqualified columns across multiple datasets,
+  - unsupported/invalid semantics (mapped to `UnsupportedQueryError`).
 
-- `ORDER BY` is supported for query planning and execution.
-- Ascending (`ASC`) and descending (`DESC`) ordering are supported.
-- Sorting is applied after projection and before `LIMIT`.
-- Null ordering is defined by the engine and backed by Arrow’s sort behavior.
-- Engine contract: `NULL` values sort last (they are considered greater than any non-null value).
+### Validation vs engine responsibilities
 
-Example:
+Product-level validation (using SQLGlot and registry metadata) is responsible for:
 
-```sql
-SELECT symbol, close
-FROM prices_nulls
-ORDER BY close
-LIMIT 10
-```
+- Enforcing allowed statement types (`SELECT`).
+- Ensuring referenced datasets exist in the registry.
+- Ensuring referenced columns exist on those datasets.
+- Detecting ambiguous unqualified columns across multiple datasets.
+- Enforcing a small number of “user-friendly” rules for grouped queries (where still enabled).
 
-### Current GROUP BY / aggregate rules
+DataFusion (the engine) is responsible for:
 
-Grouped aggregation support is intentionally strict in the current MVP.
+- Full semantic correctness of:
+  - join semantics,
+  - grouped aggregates,
+  - subqueries,
+  - set operations,
+  - expression legality.
+- Execution performance and correctness.
 
-Rules:
+The rule of thumb:
 
-- Every non-aggregated selected column must appear in `GROUP BY`.
-- Aggregate expressions (`COUNT`, `SUM`, `AVG`) are allowed in the select list.
-- Global aggregates without `GROUP BY`:
-  - Are allowed when the select list contains only aggregates (for example, `SELECT COUNT(*) FROM prices`).
-  - Are rejected when mixed with non-aggregated columns (for example, `SELECT symbol, SUM(close) FROM prices`).
-- `SELECT *` with `GROUP BY` is rejected.
-- Only plain column expressions are supported in `GROUP BY`.
-- Only plain columns and simple aggregates are supported in grouped select lists.
+- `/query/validate` is a **precheck** focusing on schema and product guardrails.
+- `/query/execute` and broad `/query/plan` rely on DataFusion for deep SQL semantics.
 
-Valid examples:
+### Current `/query/validate` behavior
 
-```sql
-SELECT symbol, SUM(close) AS total_close
-FROM prices
-GROUP BY symbol
-```
+`POST /query/validate`:
 
-```sql
-SELECT COUNT(*) AS row_count
-FROM prices
-```
+- Accepts a JSON body with `sql` and optional options.
+- Returns:
 
-Invalid examples:
+  ```json
+  {
+    "sql": "...",
+    "normalized_sql": "...",
+    "is_valid": true,
+    "query_type": "select",
+    "errors": [],
+    "tables": ["prices"],
+    "columns": ["symbol", "close"],
+    "has_where": true,
+    "has_group_by": false,
+    "has_order_by": true,
+    "has_limit": true,
+    "debug": {
+      "request_id": "...",
+      "total_ms": 1.23,
+      "stage": "validate",
+      "engine": null,
+      "error_origin": null
+    }
+  }
+  ```
 
-```sql
-SELECT symbol, close
-FROM prices
-GROUP BY symbol
-```
+- `is_valid` reflects product-level validation only. A query can pass validate but still fail execute if engine-level semantics are violated.
 
-Reason: `close` is neither aggregated nor listed in `GROUP BY`.
+### Current `/query/plan` behavior
 
-```sql
-SELECT *
-FROM prices
-GROUP BY symbol
-```
+`POST /query/plan`:
 
-Reason: `SELECT *` with `GROUP BY` is not supported in the current MVP.
+- For simple single-table queries:
 
-```sql
-SELECT symbol, SUM(close)
-FROM prices
-```
+  - Uses the legacy custom planner.
+  - Returns `engine: "infersql-planner"`.
+  - Returns custom `logical_plan` and `physical_plan` nodes.
 
-Reason: `symbol` is not grouped and is returned alongside an aggregate; it must appear in `GROUP BY` or be aggregated.
+- For broader SQL (joins, subqueries, unions):
 
-### Unsupported
+  - Delegates to DataFusion `EXPLAIN` / `EXPLAIN VERBOSE` to obtain logical and physical plans [web:16].
+  - Wraps those plans into:
 
-The following are not supported right now:
+    ```json
+    "logical_plan": {
+      "node_type": "DataFusionLogicalPlan",
+      "details": { "lines": ["..."] },
+      "children": []
+    },
+    "physical_plan": {
+      "node_type": "DataFusionPhysicalPlan",
+      "details": { "lines": ["..."] },
+      "children": []
+    }
+    ```
 
-- `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `DROP`, and other non-`SELECT` statements.
-- Join queries.
-- Multi-table queries.
-- Subqueries.
-- Window functions.
-- `HAVING` clauses.
-- Complex grouped expressions beyond plain columns and basic aggregates.
-- Arbitrary expressions in `GROUP BY`.
+  - Sets `engine: "datafusion"`.
 
-Example rejected query:
+- In both cases, `plan` may include a `debug` object:
 
-```sql
-SELECT prices.symbol, sectors.sector
-FROM prices
-JOIN sectors ON prices.symbol = sectors.symbol
-```
+  ```json
+  "debug": {
+    "request_id": "...",
+    "total_ms": 2.34,
+    "stage": "plan",
+    "engine": "datafusion",
+    "error_origin": null
+  }
+  ```
 
-Current behavior:
+### Current `/query/execute` behavior
 
-- Join queries are rejected with an explicit unsupported-feature error.
-## API behavior notes
+`POST /query/execute`:
 
-The main query endpoints are:
+- Validates using the same product-level logic as `/query/validate`, then executes via DataFusion.
+- Returns:
 
-- `/query/validate`
-- `/query/plan`
-- `/query/execute`
+  ```json
+  {
+    "sql": "...",
+    "normalized_sql": "...",
+    "row_count": 10,
+    "columns": ["symbol", "close"],
+    "rows": [
+      ["AAPL", 189.12],
+      ["MSFT", 425.27]
+    ],
+    "logical_plan": { ... } or null,
+    "physical_plan": { ... } or null,
+    "debug": {
+      "request_id": "...",
+      "total_ms": 3.21,
+      "stage": "execute",
+      "engine": "datafusion",
+      "error_origin": null
+    }
+  }
+  ```
 
-Validation responses include summary fields such as:
+- Logical/physical plans are included only where they are available and meaningful.
 
-- `query_type`
-- `tables`
-- `columns`
-- `has_where`
-- `has_group_by`
-- `has_order_by`
-- `has_limit`
+### Error responses (updated)
 
-Error responses are returned in a structured shape:
+Errors are normalized into a structured shape:
 
 ```json
 {
   "error": {
-    "type": "UnsupportedQueryError",
-    "code": "UNSUPPORTEDQUERYERROR",
-    "message": "JOIN queries are not supported right now",
-    "status_code": 400,
-    "request_id": "..."
+    "type": "UnknownDatasetError",
+    "code": "UNKNOWNDATASETERROR",
+    "message": "Unknown dataset 'fundamentals'",
+    "status_code": 404,
+    "request_id": "...",
+    "debug": {
+      "stage": "execute",
+      "engine": "datafusion",
+      "error_origin": "engine_execution"
+    }
   }
 }
 ```
+
+The mapping is:
+
+- parse / syntax issues → `InvalidQuerySyntaxError` (400).
+- unknown table / dataset → `UnknownDatasetError` (typically 404).
+- unknown column → `UnknownColumnError` (400).
+- unsupported semantics or ambiguous columns → `UnsupportedQueryError` (400/422 depending on policy).
+- unexpected engine failures → a generic “DataFusion execution error” mapped to a 5xx response (when implemented).
+
+### What is explicitly not supported (yet)
+
+The following are **not** supported today and should be rejected or documented as such:
+
+- Non-`SELECT` statements:
+  - `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `DROP`, etc.
+- Unbounded, arbitrary window function usage (beyond what is explicitly tested).
+- Complex grouped expressions beyond the product-supported rules.
+- Advanced engine features like:
+  - cost-based optimization,
+  - user-defined functions (unless explicitly wired),
+  - advanced statistics-based planning.
+
+If you are unsure whether a feature is supported:
+
+- Search for a test in `tests/test_query_execute.py` or `tests/test_query_plan.py`.
+- If no test exists, treat the feature as unsupported until one is added.
+
+## Developer guidelines
+
+- **Add tests first** for any new SQL surface you intend to support.
+- **Update this file** whenever you expand or restrict the supported SQL subset.
+- Keep `/query/validate`, `/query/plan`, and `/query/execute` behavior in sync by reusing validation helpers.
+- When in doubt, prefer:
+  - precise errors,
+  - explicit non-support, and
+  - clear documentation over silent behavior changes.
