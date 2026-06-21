@@ -270,8 +270,9 @@ class QueryService:
             raise EmptyQueryError("SQL must not be empty")
 
         expression = self.query_parser.parse(normalized_sql)
-        self.query_parser.validate_select_only(expression)
 
+        # validate_select_only is called by the caller (validate/execute)
+        self.query_parser.validate_select_only(expression)
         tables = self._extract_referenced_tables(expression)
         if not tables:
             raise UnsupportedQueryError("Query must reference a dataset")
@@ -414,6 +415,12 @@ class QueryService:
         group = expression.args.get("group")
         select_expressions = expression.expressions or []
 
+        # Reject empty SELECT list (e.g., "SELECT FROM prices")
+        if not select_expressions:
+            raise UnsupportedQueryError(
+                "Query must select at least one column or expression"
+            )
+        
         group_by_cols: set[str] = set()
         if group is not None:
             for group_expr in group.expressions:
@@ -446,6 +453,9 @@ class QueryService:
                 non_agg_columns.add(target.name)
                 continue
 
+            # For now, allow expressions when there is no GROUP BY and let DataFusion
+            # enforce semantics. If there is a GROUP BY, we still restrict to columns
+            # and simple aggregates for clearer error messages.
             if group is not None:
                 raise UnsupportedQueryError(
                     "Only plain columns and simple aggregates are supported in grouped SELECT lists right now"

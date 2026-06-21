@@ -337,17 +337,16 @@ def test_query_execute_ambiguous_unqualified_column_returns_400(client: TestClie
     assert payload["error"]["code"] == "UNSUPPORTEDQUERYERROR"
     assert "Ambiguous unqualified column 'symbol'" in payload["error"]["message"]
 
-def test_query_execute_select_from_prices_returns_zero_columns(client: TestClient) -> None:
+def test_query_execute_select_from_prices_is_rejected(client: TestClient) -> None:
     response = client.post(
         "/query/execute",
         json={"sql": "SELECT FROM prices"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 400
     payload = response.json()
-    assert payload["row_count"] == 5
-    assert payload["columns"] == []
-    assert payload["rows"] == [{}, {}, {}, {}, {}]
+    assert payload["error"]["code"] == "UNSUPPORTEDQUERYERROR"
+    assert "select at least one column" in payload["error"]["message"]
 
 
 def test_query_execute_unknown_column_returns_400(client: TestClient) -> None:
@@ -377,7 +376,7 @@ def test_query_execute_malformed_subquery_returns_unsupported(client: TestClient
     assert response.status_code == 400
     payload = response.json()
     assert payload["error"]["code"] == "UNSUPPORTEDQUERYERROR"
-    
+
 
 def test_query_execute_invalid_union_shape_returns_unsupported(client: TestClient) -> None:
     # Different column counts between the two SELECT branches.
