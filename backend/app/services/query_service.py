@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 import pyarrow as pa
 from sqlglot import exp
@@ -19,8 +20,6 @@ from app.schemas.query import PlanNode, SchemaReferenceSummary, ValidationSummar
 from app.services.datafusion_runner import DataFusionRunner
 from app.services.query_compiler import QueryCompiler
 from app.services.query_runner import QueryRunner
-
-import re
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +115,14 @@ class QueryService:
             extra={"stage": "plan", "dataset": None},
         )
 
-        self._validate_referenced_schema(sql)
+        normalized_sql = " ".join(sql.strip().split())
+        if not normalized_sql:
+            raise EmptyQueryError("SQL must not be empty")
+
+        expression = self.query_parser.parse(normalized_sql)
+        self.query_parser.validate_select_only(expression)
+
+        self._validate_referenced_schema(normalized_sql)
         compiled = self.query_compiler.compile(sql)
 
         dataset = None
@@ -165,8 +171,14 @@ class QueryService:
             extra={"stage": "execute", "dataset": None},
         )
 
-        self._validate_referenced_schema(sql)
         normalized_sql = " ".join(sql.strip().split())
+        if not normalized_sql:
+            raise EmptyQueryError("SQL must not be empty")
+
+        expression = self.query_parser.parse(normalized_sql)
+        self.query_parser.validate_select_only(expression)
+
+        self._validate_referenced_schema(normalized_sql)
 
         try:
             execution_result = self.datafusion_runner.run(
@@ -174,6 +186,13 @@ class QueryService:
                 limit=limit,
                 offset=offset,
             )
+        except (
+            InvalidQuerySyntaxError,
+            UnknownDatasetError,
+            UnknownColumnError,
+            UnsupportedQueryError,
+        ):
+            raise
         except Exception as exc:
             raise self._map_datafusion_error(exc) from exc
 
@@ -271,8 +290,6 @@ class QueryService:
 
         expression = self.query_parser.parse(normalized_sql)
 
-        # validate_select_only is called by the caller (validate/execute)
-        self.query_parser.validate_select_only(expression)
         tables = self._extract_referenced_tables(expression)
         if not tables:
             raise UnsupportedQueryError("Query must reference a dataset")
@@ -412,15 +429,16 @@ class QueryService:
         dataset_name: str,
         available_columns: list[str],
     ) -> None:
+        del dataset_name, available_columns
+
         group = expression.args.get("group")
         select_expressions = expression.expressions or []
 
-        # Reject empty SELECT list (e.g., "SELECT FROM prices")
         if not select_expressions:
             raise UnsupportedQueryError(
                 "Query must select at least one column or expression"
             )
-        
+
         group_by_cols: set[str] = set()
         if group is not None:
             for group_expr in group.expressions:
@@ -453,9 +471,6 @@ class QueryService:
                 non_agg_columns.add(target.name)
                 continue
 
-            # For now, allow expressions when there is no GROUP BY and let DataFusion
-            # enforce semantics. If there is a GROUP BY, we still restrict to columns
-            # and simple aggregates for clearer error messages.
             if group is not None:
                 raise UnsupportedQueryError(
                     "Only plain columns and simple aggregates are supported in grouped SELECT lists right now"
@@ -485,12 +500,11 @@ class QueryService:
             if match:
                 return match.group(1)
         return None
-    
+
     def _map_datafusion_error(self, exc: Exception) -> Exception:
         message = str(exc or "").strip()
         lowered = message.lower()
 
-        # 1) Syntax / parser failures
         if (
             "sql parser error" in lowered
             or "parser error" in lowered
@@ -499,7 +513,6 @@ class QueryService:
         ):
             return InvalidQuerySyntaxError(message)
 
-        # 2) Unknown dataset / table failures
         if (
             "no table named" in lowered
             or "table not found" in lowered
@@ -511,7 +524,6 @@ class QueryService:
                 return UnknownDatasetError(f"Unknown dataset '{ident}'")
             return UnknownDatasetError(message)
 
-        # 3) Ambiguous column failures
         if (
             "ambiguous reference to unqualified field" in lowered
             or ("ambiguous" in lowered and "column" in lowered)
@@ -519,7 +531,6 @@ class QueryService:
         ):
             return UnsupportedQueryError(message)
 
-        # 4) Unknown column / field-not-found failures
         if (
             "field not found" in lowered
             or "no field named" in lowered
@@ -534,7 +545,6 @@ class QueryService:
                 return UnknownColumnError(f"Unknown column '{ident}'")
             return UnknownColumnError(message)
 
-        # 5) Unsupported or planning-time semantic failures
         if (
             "not implemented" in lowered
             or "this feature is not implemented" in lowered
@@ -550,10 +560,9 @@ class QueryService:
         ):
             return UnsupportedQueryError(message)
 
-        # 6) Internal/runtime fallback
         return UnsupportedQueryError(f"DataFusion execution error: {message}")
-    
-    def _find_node(self, node, node_type: str):
+
+    def _find_node(self, node: PlanNode, node_type: str):
         if node.node_type == node_type:
             return node
 
