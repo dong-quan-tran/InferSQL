@@ -395,3 +395,50 @@ def test_query_execute_invalid_union_shape_returns_unsupported(client: TestClien
     assert response.status_code == 400
     payload = response.json()
     assert payload["error"]["code"] == "UNSUPPORTEDQUERYERROR"
+
+
+def test_query_execute_grouped_expression_is_rejected_by_validator(client: TestClient) -> None:
+    # Expression in grouped SELECT list should be caught by our grouped validator for now.
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT symbol, close + 1 AS close_plus
+                FROM prices
+                GROUP BY symbol
+            """
+        },
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "UNSUPPORTEDQUERYERROR"
+    assert "grouped SELECT lists" in payload["error"]["message"]
+
+
+def test_query_execute_aggregate_with_non_grouped_expression_relies_on_engine(client: TestClient) -> None:
+    # No GROUP BY, but both aggregate and non-aggregate expression present.
+    # We want DataFusion to decide semantics rather than product validator blocking it prematurely.
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT SUM(close) AS total_close, close + 1 AS close_plus
+                FROM prices
+            """
+        },
+    )
+
+    # Depending on DataFusion version, this may either succeed or fail with a semantic error.
+    # For now, we only assert that if it fails, we return a structured 400 with a known error code.
+    if response.status_code == 200:
+        payload = response.json()
+        assert "total_close" in payload["columns"]
+    else:
+        assert response.status_code == 400
+        payload = response.json()
+        assert payload["error"]["code"] in (
+            "UNSUPPORTEDQUERYERROR",
+            "UNKNOWNCOLUMNERROR",
+            "INVALIDQUERYSYNTAXERROR",
+        )
