@@ -244,3 +244,57 @@ def test_query_execute_order_by_sorts_nulls_last(client: TestClient) -> None:
         [row["close"] for row in rows[:-1]]
     )
     assert rows[-1]["close"] is None
+
+
+def test_query_execute_inner_join_returns_matching_rows(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT p.symbol, p.close AS left_close, n.close AS right_close
+                FROM prices AS p
+                JOIN prices_nulls AS n
+                  ON p.symbol = n.symbol
+                ORDER BY p.symbol
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["columns"] == ["symbol", "left_close", "right_close"]
+    assert payload["row_count"] == 3
+    assert payload["rows"] == [
+        {"symbol": "AAPL", "left_close": 189.12, "right_close": 150.0},
+        {"symbol": "MSFT", "left_close": 425.27, "right_close": None},
+        {"symbol": "NVDA", "left_close": 1210.54, "right_close": 120.0},
+    ]
+
+
+def test_query_execute_left_join_preserves_unmatched_rows(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT p.symbol, n.close AS matched_close
+                FROM prices AS p
+                LEFT JOIN prices_nulls AS n
+                  ON p.symbol = n.symbol
+                ORDER BY p.symbol
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["columns"] == ["symbol", "matched_close"]
+    assert payload["row_count"] == 5
+    assert payload["rows"] == [
+        {"symbol": "AAPL", "matched_close": 150.0},
+        {"symbol": "AMZN", "matched_close": None},
+        {"symbol": "GOOGL", "matched_close": None},
+        {"symbol": "MSFT", "matched_close": None},
+        {"symbol": "NVDA", "matched_close": 120.0},
+    ]

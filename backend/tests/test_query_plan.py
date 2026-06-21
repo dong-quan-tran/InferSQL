@@ -219,7 +219,7 @@ def test_query_plan_places_sort_after_filter(client: TestClient) -> None:
     }
 
 
-def test_query_plan_rejects_join_query(client: TestClient) -> None:
+def test_query_plan_reports_unknown_dataset_for_join_query(client: TestClient) -> None:
     response = client.post(
         "/query/plan",
         json={
@@ -231,5 +231,8 @@ def test_query_plan_rejects_join_query(client: TestClient) -> None:
         },
     )
 
-    assert response.status_code == 400, response.json()
-    assert response.json() == response.json()
+    assert response.status_code == 404, response.json()
+
+    data = response.json()
+    assert data["error"]["code"] == "UNKNOWNDATASETERROR"
+    assert data["error"]["message"] == "Unknown dataset 'sectors'"

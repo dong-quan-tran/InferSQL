@@ -72,8 +72,8 @@ def test_validate_referenced_schema_rejects_multiple_tables() -> None:
     service = build_query_service()
 
     with pytest.raises(
-        UnsupportedQueryError,
-        match="JOIN queries are not supported right now",
+        UnknownDatasetError,
+        match="Unknown dataset 'trades'",
     ):
         service._validate_referenced_schema(
             "SELECT prices.symbol FROM prices, trades WHERE prices.symbol = trades.symbol"

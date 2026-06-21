@@ -153,7 +153,7 @@ def test_query_validate_rejects_select_star_with_group_by(client: TestClient) ->
     )
 
 
-def test_validate_rejects_join_query_with_explicit_message(client: TestClient) -> None:
+def test_validate_join_query_reports_unknown_dataset(client: TestClient) -> None:
     response = client.post(
         "/query/validate",
         json={
@@ -169,6 +169,60 @@ def test_validate_rejects_join_query_with_explicit_message(client: TestClient) -
 
     data = response.json()
     assert data["is_valid"] is False
-    assert "JOIN queries are not supported right now" in data["errors"]
-    assert data["tables"] == ["prices", "sectors"]
-    assert data["query_type"] == "SELECT"
+    assert "Unknown dataset 'sectors'" in data["errors"]
+
+
+def test_query_validate_join_is_allowed(client: TestClient) -> None:
+    response = client.post(
+        "/query/validate",
+        json={
+            "sql": """
+                SELECT p.symbol, n.close
+                FROM prices AS p
+                JOIN prices_nulls AS n
+                  ON p.symbol = n.symbol
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["is_valid"] is True
+
+
+def test_query_validate_join_unknown_alias_column_fails(client: TestClient) -> None:
+    response = client.post(
+        "/query/validate",
+        json={
+            "sql": """
+                SELECT p.missing_col
+                FROM prices AS p
+                JOIN prices_nulls AS n
+                  ON p.symbol = n.symbol
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["is_valid"] is False
+    assert any("Unknown column 'missing_col'" in error for error in payload["errors"])
+
+
+def test_query_validate_join_ambiguous_unqualified_column_fails(client: TestClient) -> None:
+    response = client.post(
+        "/query/validate",
+        json={
+            "sql": """
+                SELECT symbol
+                FROM prices AS p
+                JOIN prices_nulls AS n
+                  ON p.symbol = n.symbol
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["is_valid"] is False
+    assert any("Ambiguous unqualified column 'symbol'" in error for error in payload["errors"])

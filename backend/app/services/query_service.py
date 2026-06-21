@@ -267,41 +267,147 @@ class QueryService:
         expression = self.query_parser.parse(normalized_sql)
         self.query_parser.validate_select_only(expression)
 
-        summary = self.query_parser.summarize(normalized_sql)
-        tables = summary["tables"]
-        columns = summary["columns"]
-
+        tables = self._extract_referenced_tables(expression)
         if not tables:
             raise UnsupportedQueryError("Query must reference a dataset")
 
-        if self.query_parser.has_join(expression):
-            raise UnsupportedQueryError(
-                "JOIN queries are not supported right now"
+        alias_to_table = self._build_alias_to_table_map(expression)
+        available_columns_by_table = self._load_available_columns_by_table(tables)
+
+        self._validate_columns(expression, alias_to_table, available_columns_by_table)
+
+        if len(tables) == 1:
+            dataset_name = tables[0]
+            available_columns = sorted(available_columns_by_table[dataset_name])
+            self._validate_single_table_grouping(expression, dataset_name, available_columns)
+            return SchemaReferenceSummary(
+                dataset_name=dataset_name,
+                columns=self._extract_column_names(expression),
+                available_columns=available_columns,
             )
 
-        if len(tables) > 1:
-            raise UnsupportedQueryError(
-                "Only single-table queries are supported right now"
-            )
+        return SchemaReferenceSummary(
+            dataset_name="__multiple__",
+            columns=self._extract_column_names(expression),
+            available_columns=sorted(
+                {
+                    column_name
+                    for column_names in available_columns_by_table.values()
+                    for column_name in column_names
+                }
+            ),
+        )
 
-        dataset_name = tables[0]
+    def _extract_referenced_tables(self, expression: exp.Expression) -> list[str]:
+        names: list[str] = []
+        seen: set[str] = set()
 
-        try:
-            schema = self.dataset_registry.get_schema(dataset_name)
-        except DatasetNotFoundError as exc:
-            raise UnknownDatasetError(f"Unknown dataset '{dataset_name}'") from exc
-
-        available_columns = [field.name for field in schema]
-        available_column_set = set(available_columns)
-
-        for column in columns:
-            if column == "*":
+        for table in expression.find_all(exp.Table):
+            name = table.name
+            if not name or name in seen:
                 continue
-            if column not in available_column_set:
-                raise UnknownColumnError(
-                    f"Unknown column '{column}' on dataset '{dataset_name}'"
+            seen.add(name)
+            names.append(name)
+
+        return names
+
+    def _build_alias_to_table_map(self, expression: exp.Expression) -> dict[str, str]:
+        alias_to_table: dict[str, str] = {}
+
+        for table in expression.find_all(exp.Table):
+            table_name = table.name
+            if not table_name:
+                continue
+
+            alias_to_table[table_name] = table_name
+
+            alias = table.alias_or_name
+            if alias:
+                alias_to_table[alias] = table_name
+
+        return alias_to_table
+
+    def _load_available_columns_by_table(self, tables: list[str]) -> dict[str, set[str]]:
+        available_columns_by_table: dict[str, set[str]] = {}
+
+        for dataset_name in tables:
+            try:
+                schema = self.dataset_registry.get_schema(dataset_name)
+            except DatasetNotFoundError as exc:
+                raise UnknownDatasetError(f"Unknown dataset '{dataset_name}'") from exc
+
+            available_columns_by_table[dataset_name] = {field.name for field in schema}
+
+        return available_columns_by_table
+
+    def _validate_columns(
+        self,
+        expression: exp.Expression,
+        alias_to_table: dict[str, str],
+        available_columns_by_table: dict[str, set[str]],
+    ) -> None:
+        for column in expression.find_all(exp.Column):
+            column_name = column.name
+            if not column_name or column_name == "*":
+                continue
+
+            table_alias = column.table
+
+            if table_alias:
+                dataset_name = alias_to_table.get(table_alias)
+                if dataset_name is None:
+                    raise UnknownDatasetError(
+                        f"Unknown dataset or alias '{table_alias}'"
+                    )
+
+                if column_name not in available_columns_by_table[dataset_name]:
+                    raise UnknownColumnError(
+                        f"Unknown column '{column_name}' on dataset '{dataset_name}'"
+                    )
+
+                continue
+
+            matching_datasets = [
+                dataset_name
+                for dataset_name, column_names in available_columns_by_table.items()
+                if column_name in column_names
+            ]
+
+            if not matching_datasets:
+                if column_name == "*":
+                    continue
+                if len(available_columns_by_table) == 1:
+                    dataset_name = next(iter(available_columns_by_table))
+                    raise UnknownColumnError(
+                        f"Unknown column '{column_name}' on dataset '{dataset_name}'"
+                    )
+                raise UnknownColumnError(f"Unknown column '{column_name}'")
+
+            if len(matching_datasets) > 1 and len(available_columns_by_table) > 1:
+                dataset_list = ", ".join(sorted(matching_datasets))
+                raise UnsupportedQueryError(
+                    f"Ambiguous unqualified column '{column_name}' referenced across datasets: {dataset_list}"
                 )
 
+    def _extract_column_names(self, expression: exp.Expression) -> list[str]:
+        names: list[str] = []
+        seen: set[str] = set()
+
+        for column in expression.find_all(exp.Column):
+            column_name = column.name
+            if not column_name or column_name in seen:
+                continue
+            seen.add(column_name)
+            names.append(column_name)
+
+        return names
+
+    def _validate_single_table_grouping(
+        self,
+        expression: exp.Expression,
+        dataset_name: str,
+        available_columns: list[str],
+    ) -> None:
         group = expression.args.get("group")
         select_expressions = expression.expressions or []
 
@@ -355,12 +461,6 @@ class QueryService:
                 raise UnsupportedQueryError(
                     f"Columns {missing_list} must appear in GROUP BY or be aggregated"
                 )
-
-        return SchemaReferenceSummary(
-            dataset_name=dataset_name,
-            columns=columns,
-            available_columns=available_columns,
-        )
 
     def _find_node(self, node, node_type: str):
         if node.node_type == node_type:
