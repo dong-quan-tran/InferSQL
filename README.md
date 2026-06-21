@@ -23,21 +23,25 @@ The current engine is columnar and Arrow-based:
   - `Scan` – read a named dataset from the in-memory registry.
   - `Filter` – simple `WHERE` predicates on a single table.
   - `Project` – select and rename columns, with alias preservation.
-  - `Sort` – `ORDER BY` on a single table, with ASC/DESC support.
+  - `Sort` – `ORDER BY` on a single table, with ASC/DESC support and nulls sorting last.
   - `Aggregate` – basic aggregates over Arrow:
     - `COUNT`, including `COUNT(*)`.
     - `SUM`.
     - `AVG`.
-    - GROUP BY over one or more grouping keys.
+    - `GROUP BY` over one or more grouping keys, with strict MVP semantics.
   - `Limit` – `LIMIT n`.
 
 The engine is intentionally narrow right now:
 
 - **SELECT-only**, single-table queries.
 - `WHERE` with simple comparisons (e.g., `column > 100`).
-- `ORDER BY` on one or more expressions on a single table.
-- `GROUP BY` + aggregates with a small, well-defined surface.
-- **No joins yet** – joins are explicitly treated as unsupported for now.
+- `ORDER BY` on one or more projected/queryable columns.
+- Global aggregates (no `GROUP BY`) when the select list is aggregates only.
+- `GROUP BY` + aggregates with a small, well-defined surface and validation:
+  - Non-aggregated columns must appear in `GROUP BY`.
+  - `SELECT *` with `GROUP BY` is rejected.
+  - Only plain columns + simple aggregates in grouped select lists.
+- **No joins yet** – joins are explicitly treated as unsupported, with structured errors.
 
 The logical plan encodes explicit node types and metadata:
 
@@ -46,11 +50,13 @@ The logical plan encodes explicit node types and metadata:
 - `Project` – carries both:
   - `columns`: the **output** column names in order.
   - `projections`: `{ "source": ..., "output": ... }` pairs, so `SELECT close AS price` is represented as `{ "source": "close", "output": "price" }`.
-- `Aggregate` – `group_keys` plus `aggregates` entries like `{ "func": "SUM", "column": "close", "alias": "sum_close" }`.
+- `Aggregate` – `group_keys` plus `aggregates` entries like `{ "func": "SUM", "column": "close", "alias": "total_close" }`.
 - `Sort` – `keys` as `{ "column": "close", "direction": "ASC" | "DESC" }`.
 - `Limit` – `{ "count": 10 }`.
 
 Execution uses PyArrow tables and operators rather than row loops.
+
+For a more detailed description of the supported SQL subset and current semantics (including ORDER BY and GROUP BY rules), see `DEVELOPMENT.md`.
 
 ### Copilot
 
@@ -85,7 +91,7 @@ InferSQL includes a schema-aware, validation-first copilot:
     - Uses the schema selector and context builder.
     - Calls the chosen LLM provider to produce a `CopilotSqlCandidate`.
     - Validates the candidate via the **same** `QueryService` path used by the core engine:
-      - Parse, plan, schema checks, supported features.
+      - Parse, plan, schema checks, supported features (including aggregate and join restrictions).
     - If invalid, constructs a **repair prompt** including:
       - Original question.
       - Schema context.
@@ -99,9 +105,9 @@ InferSQL includes a schema-aware, validation-first copilot:
 
 - **Eval harness:**
   - A copilot evaluation harness with:
-    - Cases for synonyms, hallucinated tables/columns, unsupported joins/aggregates.
+    - Cases for synonyms, hallucinated tables/columns, and unsupported joins/aggregates.
     - Per-category metrics and a summary structure.
-  - The harness is structured to later plug in regression thresholds and artifact persistence.
+  - Structured so regression thresholds and artifact persistence can be added later.
 
 ---
 
@@ -145,7 +151,7 @@ Configuration is handled via a Pydantic `Settings` model:
   - `log_json`, `log_level`.
 - **Observability:**
   - `service_name`.
-  - `console_span_exporter_enabled`.
+  - Flags for console span exporters, etc.
 - **LLM setup:**
   - `llm_provider` – `"ollama"`, `"gemini"`, `"openai"`, or `"auto"`.
   - `llm_temperature`.
@@ -153,7 +159,7 @@ Configuration is handled via a Pydantic `Settings` model:
   - Gemini: `gemini_api_key`, `gemini_model`.
   - OpenAI: `openai_api_key`, `openai_model`.
 
-Settings are loaded once via a `get_settings()` helper and reused across the app.
+Settings are loaded once via a helper and reused across the app.
 
 ---
 
@@ -161,11 +167,11 @@ Settings are loaded once via a `get_settings()` helper and reused across the app
 
 Right now:
 
-- OTEL-friendly middleware is wired in at the ASGI/FastAPI layer.
-- A small observability module builds an OpenTelemetry `Resource` using `service_name` and configuration.
+- Middleware is wired in at the ASGI/FastAPI layer in an OTEL-friendly way.
+- An observability module builds an OpenTelemetry `Resource` using `service_name` and configuration.
 - Logging includes:
   - `request_id` (for correlation).
-  - Stage tags like `"parse"`, `"plan"`, `"execute"` in `QueryService`.
+  - Stage tags like `"validate"`, `"plan"`, `"execute"` in `QueryService`.
 
 Planned next steps:
 
@@ -210,7 +216,7 @@ The broader “feature store / inference runtime / control plane” shown in the
   - Single-table SELECT queries with `WHERE`, `ORDER BY`, `GROUP BY`, aggregates, and `LIMIT`.
   - Logical and physical planning with explicit node types.
   - Execution over Arrow tables via a small set of operators.
-- In-memory dataset registry with demo tables (`seed_demo_data`).
+- In-memory dataset registry with demo tables (via `seed_demo_data`, including `prices` and `prices_nulls` for null-ordering tests).
 - Schema-aware copilot:
   - Pluggable LLM provider layer (Ollama, Gemini, OpenAI, auto-selection, and fallback).
   - Schema selection and context building.
@@ -222,8 +228,8 @@ The broader “feature store / inference runtime / control plane” shown in the
 - Basic observability hooks at the middleware and service layers.
 - A reasonably comprehensive test suite covering:
   - Parser and planner behavior.
-  - Query service, runner, and copilot flows.
-  - Provider factory and fallback behavior.
+  - Query service, runner, and aggregate/ORDER BY semantics.
+  - Copilot flows, provider factory, and fallback behavior.
   - Copilot eval harness behavior.
 
 ### Planned / not yet built
@@ -248,8 +254,7 @@ The broader “feature store / inference runtime / control plane” shown in the
 
 - **Docs and developer UX:**
   - Up-to-date architecture diagrams focused on the current engine + copilot.
-  - A clear “supported SQL subset” section.
-  - Developer docs for running copilot evals and (later) benchmarks.
+  - Additional docs for running copilot evals and (later) benchmarks.
 
 ---
 
@@ -275,7 +280,7 @@ uvicorn app.main:app --reload
 By default, the app:
 
 - Loads settings from environment variables / `.env`.
-- Seeds a demo dataset (e.g., `prices`) if `seed_demo_data=true`.
+- Seeds demo datasets if `seed_demo_data=true`.
 - Exposes `/query` and copilot endpoints under the FastAPI app.
 
 Once running, you can:
@@ -290,7 +295,7 @@ Once running, you can:
 
 InferSQL is actively evolving. The current focus is:
 
-1. **Engine completion:** solidifying ORDER BY semantics, aggregates, and GROUP BY behavior.
+1. **Engine completion:** solidifying ORDER BY semantics, aggregates, and GROUP BY behavior with clear validation.
 2. **Catalog and ingestion:** CSV/Parquet loaders and a metadata-rich catalog.
 3. **Copilot safety and accuracy:** better evals, more guardrails, and richer schema awareness.
 4. **Observability and benchmarks:** turning the existing hooks into a real instrumentation story.

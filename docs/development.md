@@ -18,6 +18,10 @@ python -m pytest
 
 InferSQL currently supports a small analytical SQL subset focused on single-table `SELECT` queries over Arrow-backed datasets.
 
+## Supported SQL subset
+
+InferSQL currently supports a small analytical SQL subset focused on single-table `SELECT` queries over Arrow-backed datasets.
+
 ### Supported
 
 - `SELECT` queries only.
@@ -27,7 +31,7 @@ InferSQL currently supports a small analytical SQL subset focused on single-tabl
   - `SELECT symbol, close FROM prices`
 - Projection aliases, for example:
   - `SELECT close AS price FROM prices`
-- `WHERE` filters.
+- `WHERE` filters on simple column comparisons.
 - `ORDER BY` on projected/queryable columns.
 - `ASC` and `DESC` sort direction.
 - `LIMIT`.
@@ -36,14 +40,17 @@ InferSQL currently supports a small analytical SQL subset focused on single-tabl
   - `COUNT(column)`
   - `SUM(column)`
   - `AVG(column)`
+- Global aggregates (no `GROUP BY`), for example:
+  - `SELECT COUNT(*) AS row_count FROM prices`
 - `GROUP BY` with MVP validation rules.
 
 ### Current ORDER BY behavior
 
 - `ORDER BY` is supported for query planning and execution.
-- Ascending and descending ordering are supported.
-- Null ordering currently follows the engine’s Arrow-backed sort behavior.
-- Current engine contract: `NULL` values sort last.
+- Ascending (`ASC`) and descending (`DESC`) ordering are supported.
+- Sorting is applied after projection and before `LIMIT`.
+- Null ordering is defined by the engine and backed by Arrow’s sort behavior.
+- Engine contract: `NULL` values sort last (they are considered greater than any non-null value).
 
 Example:
 
@@ -61,7 +68,10 @@ Grouped aggregation support is intentionally strict in the current MVP.
 Rules:
 
 - Every non-aggregated selected column must appear in `GROUP BY`.
-- Aggregate expressions are allowed in the select list.
+- Aggregate expressions (`COUNT`, `SUM`, `AVG`) are allowed in the select list.
+- Global aggregates without `GROUP BY`:
+  - Are allowed when the select list contains only aggregates (for example, `SELECT COUNT(*) FROM prices`).
+  - Are rejected when mixed with non-aggregated columns (for example, `SELECT symbol, SUM(close) FROM prices`).
 - `SELECT *` with `GROUP BY` is rejected.
 - Only plain column expressions are supported in `GROUP BY`.
 - Only plain columns and simple aggregates are supported in grouped select lists.
@@ -97,6 +107,13 @@ GROUP BY symbol
 
 Reason: `SELECT *` with `GROUP BY` is not supported in the current MVP.
 
+```sql
+SELECT symbol, SUM(close)
+FROM prices
+```
+
+Reason: `symbol` is not grouped and is returned alongside an aggregate; it must appear in `GROUP BY` or be aggregated.
+
 ### Unsupported
 
 The following are not supported right now:
@@ -106,7 +123,7 @@ The following are not supported right now:
 - Multi-table queries.
 - Subqueries.
 - Window functions.
-- HAVING clauses.
+- `HAVING` clauses.
 - Complex grouped expressions beyond plain columns and basic aggregates.
 - Arbitrary expressions in `GROUP BY`.
 
@@ -121,7 +138,6 @@ JOIN sectors ON prices.symbol = sectors.symbol
 Current behavior:
 
 - Join queries are rejected with an explicit unsupported-feature error.
-
 ## API behavior notes
 
 The main query endpoints are:

@@ -1,110 +1,224 @@
 Legend:
 
-[x] done today or earlier
+not started
 
 [~] partially done
 
-[ ] not started
+done
 
-Phase 1: Query engine completion
-Add ORDER BY support
+Phase 0: Freeze scope
+Define the August finish line clearly:
 
-Extend parser to detect and represent ORDER BY.
+broad analytical SQL support for registered datasets
 
-Add logical Sort node.
+English-to-SQL copilot still works
 
-Add physical sort operator.
+existing API shape mostly preserved
 
-Support ascending and descending order.
+docs + tests + basic observability included
 
-[~] Define/document null ordering behavior.
+Decide what is explicitly out of scope for August:
 
-Effective behavior is whatever Arrow’s sort uses by default; engine + tests exist, docs still needed.
+full ANSI parity
 
-Decide and document “NULLs sort last” vs “first”.
+DML/DDL beyond what product needs
 
-Add at least one test that explicitly hits rows with nulls to lock in behavior.
+full cost-based optimization work
 
-Add tests for:
+enterprise auth/governance
 
-ascending sort
+Decide whether the old custom engine remains:
 
-descending sort
+as fallback for narrow queries, or
 
-sort after filter
+as legacy/reference code only
 
-sort with limit
+Phase 1: Architecture decision
+Write a short migration note in repo docs:
 
-Add aggregate support
+current custom engine role
 
-Extend parsing and planning for:
+target DataFusion role
 
-COUNT
+what layers remain custom
 
-SUM
+Decide the execution model:
 
-AVG (MVP implementation is in place).
+all /query/execute goes through DataFusion, or
 
-Add GROUP BY logical-plan support.
+route narrow SQL to custom engine and broad SQL to DataFusion
 
-Add aggregate physical operators (global and grouped).
+Decide the planning story for /query/plan:
 
-[~] Define MVP constraints clearly in docs:
+keep current product-level plan only for narrow queries
 
-Implementation enforces constraints via validation (e.g., non-grouped columns must appear in GROUP BY or be aggregated, SELECT * with GROUP BY rejected).
+return a simplified plan summary for broad queries
 
-Write this up in user-facing docs.
+optionally expose DataFusion EXPLAIN
 
-Add tests for:
+Decide error normalization strategy:
 
-COUNT(*)
+parse/validation errors from product layer
 
-grouped sums on realistic fixtures (e.g., SUM(close) BY symbol)
+engine planning/execution errors normalized from DataFusion
 
-invalid aggregate queries (missing GROUP BY, mixing aggregated and non-aggregated columns)
+Phase 2: Bring in DataFusion
+Add datafusion dependency and pin a known-good version.
 
-basic consistency of aggregation results (per-symbol totals, row counts, etc.)
+Create a local spike script or scratch test that:
 
-Finish projection alias handling
+creates SessionContext
 
-Ensure SELECT close AS price is represented correctly in summaries and plans.
+registers a small Arrow table
 
-Logical plan includes projection metadata with {source: "close", output: "price"}.
+runs a simple SQL query
 
-Ensure output columns preserve alias names in execute responses.
+returns Arrow results
 
-API columns list and row dicts now use alias names.
+Verify the Python API you want to rely on:
 
-Add tests for aliased projections:
+SessionContext.sql(...)
 
-simple alias
+collect()
 
-alias with filters
+to_arrow_table()
 
-alias with grouped aggregates
+Arrow import/export path
 
-Add join groundwork
+Confirm that in-memory Arrow tables from your registry can be fed into the DataFusion path cleanly.
 
-[~] Detect multi-table queries and join clauses in the parser layer (beyond rejecting them).
+Phase 3: Build a DataFusion execution adapter
+Create a new service/module, e.g.:
 
-[~] Decide first supported join type (probably INNER JOIN on equality) or explicitly reject all joins with structured errors.
+app/services/datafusion_runner.py
 
-You already have “joins unsupported” validation; it’s partially wired.
+or app/core/engine/datafusion_adapter.py
 
-[~] Add stable, user-friendly unsupported-join errors:
+Implement session creation lifecycle:
 
-Behavior exists in validation/eval tests, could still be sharpened.
+one context per request, or
 
-Add planner placeholders if execution is deferred, so the logical plan can represent a Join node even if there’s no physical join yet.
+reusable context with table re-registration strategy
 
-Phase 2: Catalog and ingestion
-Build a real dataset loader
+Implement dataset registration from your DatasetRegistry into DataFusion context.
 
-Add CSV loading.
+Support in-memory Arrow table registration first.
 
-Add Parquet loading.
+Add result conversion:
 
-Register loaded tables in the dataset registry.
+DataFusion result → Arrow table
+
+Arrow table → existing ExecutionResult
+
+Preserve output shape:
+
+columns
+
+rows
+
+row_count
+
+Add an engine field in execute responses if useful, e.g. "engine": "datafusion".
+
+Phase 4: Route /query/execute through DataFusion
+Update QueryService.execute() to use the DataFusion runner.
+
+Keep current request contract stable if possible.
+
+Ensure current working queries still pass:
+
+simple projection
+
+filter
+
+alias
+
+order by
+
+group by
+
+aggregates
+
+limit
+
+Add first broad-SQL smoke tests:
+
+INNER JOIN
+
+LEFT JOIN
+
+HAVING
+
+subquery in WHERE or FROM
+
+UNION ALL
+
+Phase 5: Redesign validation
+Simplify validation so it no longer hand-implements full SQL semantics unnecessarily.
+
+Keep product-level validation for:
+
+query must be allowed statement type
+
+datasets must be registered
+
+tables/columns should be known where feasible
+
+optional product guardrails
+
+Remove or relax current blockers that assume narrow SQL only:
+
+blanket join rejection
+
+blanket multi-table rejection
+
+over-strict aggregate restrictions when DataFusion can validate correctly
+
+Decide whether validation should:
+
+use SQLGlot for metadata extraction only, or
+
+call DataFusion planning/EXPLAIN as part of validation
+
+Normalize validation errors into your current API error shape.
+
+Phase 6: Metadata and schema alignment
+Make sure table metadata in your registry is the source of truth for:
+
+table names
+
+column names
+
+descriptions
+
+aliases
+
+sample values if present
+
+Ensure copilot schema context and execution engine use the same registered datasets.
+
+Decide how DataFusion sees dataset names:
+
+exact registry names
+
+namespaced/catalog style names
+
+Add tests that validate schema consistency between:
+
+registry
+
+catalog endpoints
+
+copilot schema context
+
+DataFusion registration
+
+Phase 7: Catalog and ingestion
+Finish CSV loading.
+
+Finish Parquet loading.
+
+Register loaded datasets automatically in the registry.
 
 Store metadata:
 
@@ -116,154 +230,300 @@ source path
 
 loaded timestamp
 
-Add fixture-based ingestion tests for CSV and Parquet.
+Add ingestion tests for:
 
-Expand catalog metadata
+CSV
 
-Add schema introspection endpoint (list datasets, columns, types).
+Parquet
 
-Implemented as catalog API + tests today.
+duplicate table names
 
-Prepare prompt-ready schema payload for copilot:
+invalid schema/file handling
 
-CopilotSchemaContextBuilder and metadata-rich descriptions are in place and wired into copilot.
+If useful, support file-backed DataFusion registration for loaded datasets:
 
-[~] Return dataset metadata from the registry via API, not just internally for copilot.
+register_csv
 
-Basic dataset + column metadata now exposed via catalog endpoints.
+register_parquet
 
-Double-check that everything copilot uses (samples, descriptions, aliases) is either exposed or explicitly scoped to copilot.
+Phase 8: Broaden SQL capability tests
+Add execute tests for joins:
 
-[~] Align introspection payload format with what copilot uses.
+inner join on equality
 
-Shapes are closely aligned through DatasetRegistry + CopilotSchemaContextBuilder.
+left join
 
-Decide and document the “public” catalog schema vs “LLM-facing” schema, and refactor if needed.
+join with alias references
 
-Phase 3: Observability and performance
-Deepen execution instrumentation
+Add execute tests for subqueries:
 
-[~] Keep per-stage parse/plan/execute timing:
+scalar subquery
 
-Some timing/logging exists; standardization + tests/docs still to do.
+IN (subquery)
 
-[~] Add structured logs for:
+subquery in FROM
 
-[~] request id
+Add tests for HAVING.
 
-[~] sql and normalized sql
+Add tests for UNION / UNION ALL.
 
-[~] stage timings
+Add tests for richer expressions:
 
-[~] status/outcome
+arithmetic in SELECT
 
-Add minimal OpenTelemetry spans around query lifecycle (parse → plan → execute).
+expressions in ORDER BY
 
-[~] Standardize debug metadata across /validate, /plan, /execute.
+expressions with aliases
 
-Shared fields exist; full normalization still pending.
+Add window function tests if time allows:
 
-Expand benchmarks
+ROW_NUMBER()
 
-Benchmark Arrow execution vs a naive row-based baseline (filter/project/limit).
+LAG()
 
-Benchmark filter/project/limit at increasing row counts (1k, 10k, 100k, 1M).
+SUM(...) OVER (...)
 
-Save benchmark summaries and comparison artifacts to disk.
+Phase 9: Copilot migration
+Update prompt instructions to reflect broader SQL support.
 
-Add regression thresholds for latency degradation.
+Add few-shot examples for:
 
-Phase 4: Copilot quality and safety
-Improve Ollama prompt quality
+joins
 
-[~] Add few-shot examples to the provider prompt:
+grouped queries with HAVING
 
-Prompt assets exist and are used; worth re-validating wiring.
+subqueries
 
-Add synonym mapping guidance (ticker → symbol, stock price → close, etc.) and keep it in assets/config.
+union queries
 
-[~] Add direct tests for prompt construction (shape, examples, synonyms, schema snippet).
+Update repair prompts so they no longer over-reject joins if joins are now supported.
 
-Some prompt-asset tests exist; snapshot / stricter tests are still open.
+Keep product safety rules explicit in the prompt:
 
-Strengthen copilot validation
+only registered datasets
 
-Validate generated SQL with the same parser/schema checks as the core engine (including aggregates and joins being unsupported where appropriate).
+no made-up columns
 
-Normalize generated SQL before scoring or returning results in the eval harness.
+prefer simple valid SQL
 
-Return explicit unsupported-feature reasons for joins, aggregates, and other unsupported expressions (to the extent wired in current eval tests).
+Expand eval coverage:
 
-Keep generation separate from execution by default.
+multi-table join requests
 
-Ensure validation results always include:
+ambiguous join requests
 
-query_type
+hallucinated join keys
 
-tables
+grouped + having requests
 
-columns
+nested subquery requests
 
-has_where, has_group_by, has_order_by, has_limit
+Track category metrics for broad-SQL copilot quality.
 
-Expand copilot eval coverage
+Phase 10: Error handling and UX
+Normalize DataFusion parse/planning/execution errors into your API error format.
 
-[~] Add eval cases for:
+Keep error messages user-friendly:
 
-synonym queries (ticker, stock price, etc.)
+unknown table
 
-ambiguous requests
+unknown column
 
-hallucinated tables
+ambiguous column
 
-hallucinated columns
+unsupported syntax if still applicable
 
-unsupported joins
+Distinguish:
 
-unsupported aggregates
+product validation failure
 
-Track quality by category; generate summary.
+engine planning failure
 
-[~] Save eval summaries to disk per run and enforce regression thresholds.
+runtime execution failure
 
-Summary exists; persistence + thresholding in CI still open.
+Add tests for broad-SQL failure cases:
 
-Schema-aware selection and context
+unknown join table
 
-Add a question-aware schema selector (CopilotSchemaSelector with tokenization, synonyms, and scoring over table/column metadata and samples).
+unknown join column
 
-Integrate selector with CopilotSchemaContextBuilder.
+ambiguous column name
 
-[~] Add metrics around selection behavior (tables selected per query, selection distribution, tie-in to eval outputs).
+malformed subquery
 
-Phase 5: Feature store and inference slice
-This phase is still untouched:
+Phase 11: Observability
+Standardize debug metadata across:
 
-Define the smallest viable feature-store slice (registry abstraction, definition format, materialization).
+/query/validate
 
-Build minimal model registry.
+/query/plan
 
-Build minimal inference runtime and end-to-end tests.
+/query/execute
 
-Documentation
-Keep architecture docs current
+Add stage timings:
 
-[~] Add/extend a progress log.
+validate
 
-You’ve captured progress in chat; not yet written into repo docs.
+copilot_generate
 
-[~] Keep the architecture document in sync:
+copilot_repair
 
-Needs explicit mention of ORDER BY + aggregate capabilities, plus current copilot behavior.
+execute
 
-Improve developer docs
+Add structured logs for:
 
-[~] Add/refine DEVELOPMENT.md:
+request id
 
-Setup and test commands exist informally; need a consolidated doc.
+normalized sql
 
-[~] Document the currently supported SQL subset:
+engine used
 
-Implementation is there; a crisp doc section is still missing.
+status/outcome
 
-[~] Document copilot endpoint behavior and current limitations, updated for aggregate awareness.
+Add minimal OTEL spans around:
+
+validation
+
+execution
+
+copilot generation/repair
+
+Phase 12: Benchmarks
+Build a benchmark script comparing:
+
+current custom engine
+
+DataFusion-backed execution
+
+Benchmark core query classes:
+
+filter/project/limit
+
+aggregate/group by
+
+order by + limit
+
+join
+
+Benchmark at increasing sizes:
+
+1k
+
+10k
+
+100k
+
+1M rows
+
+Save benchmark summaries to disk.
+
+Add simple regression thresholds or at least manual benchmark baselines.
+
+Phase 13: Docs
+Update README.md for DataFusion-backed broad SQL execution.
+
+Update DEVELOPMENT.md:
+
+supported SQL surface
+
+what is validated by product layer vs engine layer
+
+current limitations
+
+Add a migration note:
+
+why DataFusion was adopted
+
+what parts of the original custom engine remain
+
+Add examples:
+
+join query
+
+subquery
+
+having query
+
+union query
+
+copilot NL → SQL examples
+
+Document known limitations honestly.
+
+Phase 14: Release prep
+Run full test suite cleanly.
+
+Add at least one end-to-end demo scenario over 2–3 datasets.
+
+Verify copilot + execute path with broad SQL examples.
+
+Clean old TODOs and docs so they reflect the new architecture.
+
+Tag a release candidate for August delivery.
+
+First 14-day execution plan
+Days 1–2
+Freeze scope and write migration note.
+
+Decide:
+
+all execute via DataFusion, or hybrid
+
+/query/plan behavior for broad SQL
+
+Days 3–4
+Add DataFusion dependency.
+
+Create spike script:
+
+register Arrow table
+
+run SQL
+
+collect results
+
+Days 5–6
+Create DataFusion adapter module.
+
+Register tables from DatasetRegistry.
+
+Convert results to current execution response shape.
+
+Days 7–8
+Route /query/execute through DataFusion.
+
+Keep existing simple execute tests green.
+
+Days 9–10
+Add broad-SQL smoke tests:
+
+join
+
+having
+
+union
+
+subquery
+
+Days 11–12
+Relax/rewrite validator for broad SQL.
+
+Normalize DataFusion errors.
+
+Days 13–14
+Update copilot prompt/rules for joins and broader SQL.
+
+Add first broad-SQL copilot eval cases.
+
+Definition of done for August
+Users can query registered datasets with broad analytical SQL through the same API.
+
+Copilot can generate valid SQL for common single-table and multi-table questions.
+
+Validation still protects schema correctness and product rules.
+
+Results return in a stable documented response shape.
+
+Catalog/ingestion is usable for real CSV/Parquet datasets.
+
+Basic logs, timings, benchmarks, and docs are in place.
