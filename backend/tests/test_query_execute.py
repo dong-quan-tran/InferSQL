@@ -442,3 +442,113 @@ def test_query_execute_aggregate_with_non_grouped_expression_relies_on_engine(cl
             "UNKNOWNCOLUMNERROR",
             "INVALIDQUERYSYNTAXERROR",
         )
+
+
+def test_query_execute_having_filters_grouped_rows(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT symbol, SUM(close) AS total_close
+                FROM prices
+                GROUP BY symbol
+                HAVING SUM(close) > 200
+                ORDER BY symbol
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["columns"] == ["symbol", "total_close"]
+    assert payload["row_count"] == 2
+    assert payload["rows"] == [
+        {"symbol": "MSFT", "total_close": 425.27},
+        {"symbol": "NVDA", "total_close": 1210.54},
+    ]
+
+
+def test_query_execute_in_subquery_returns_rows(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT symbol
+                FROM prices
+                WHERE symbol IN (
+                    SELECT symbol
+                    FROM prices_nulls
+                )
+                ORDER BY symbol
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["columns"] == ["symbol"]
+    assert payload["row_count"] == 3
+    assert payload["rows"] == [
+        {"symbol": "AAPL"},
+        {"symbol": "MSFT"},
+        {"symbol": "NVDA"},
+    ]
+
+
+def test_query_execute_union_all_returns_all_rows(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT symbol
+                FROM prices_nulls
+                UNION ALL
+                SELECT symbol
+                FROM prices_nulls
+                ORDER BY symbol
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["columns"] == ["symbol"]
+    assert payload["row_count"] == 6
+    assert payload["rows"] == [
+        {"symbol": "AAPL"},
+        {"symbol": "AAPL"},
+        {"symbol": "MSFT"},
+        {"symbol": "MSFT"},
+        {"symbol": "NVDA"},
+        {"symbol": "NVDA"},
+    ]
+
+
+def test_query_execute_union_deduplicates_rows(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT symbol
+                FROM prices_nulls
+                UNION
+                SELECT symbol
+                FROM prices_nulls
+                ORDER BY symbol
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["columns"] == ["symbol"]
+    assert payload["row_count"] == 3
+    assert payload["rows"] == [
+        {"symbol": "AAPL"},
+        {"symbol": "MSFT"},
+        {"symbol": "NVDA"},
+    ]

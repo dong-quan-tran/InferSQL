@@ -17,13 +17,18 @@ class QueryParser:
             raise InvalidQuerySyntaxError("Invalid SQL syntax") from exc
 
     def validate_select_only(self, expression: exp.Expression) -> None:
-        if not isinstance(expression, exp.Select):
-            raise UnsupportedQueryError("Only SELECT queries are supported right now")
+        if isinstance(expression, (exp.Select, exp.Union, exp.Intersect, exp.Except)):
+            return
+
+        if expression.find(exp.Select) is not None:
+            return
+
+        raise UnsupportedQueryError("Only SELECT queries are supported right now")
 
     def summarize(self, sql: str) -> dict:
         expression = self.parse(sql)
 
-        tables = sorted({table.name for table in expression.find_all(exp.Table)})
+        tables = sorted({table.name for table in expression.find_all(exp.Table) if table.name})
         columns = sorted(
             {
                 column.alias_or_name
@@ -37,19 +42,39 @@ class QueryParser:
         order = expression.args.get("order")
         limit = expression.args.get("limit")
 
+        has_where = where is not None or expression.find(exp.Where) is not None
+        has_group_by = group is not None or expression.find(exp.Group) is not None
+        has_order_by = order is not None or expression.find(exp.Order) is not None
+        has_limit = limit is not None or expression.find(exp.Limit) is not None
+
+        query_type = "SELECT"
+        if isinstance(expression, exp.Union):
+            query_type = "UNION"
+        elif isinstance(expression, exp.Intersect):
+            query_type = "INTERSECT"
+        elif isinstance(expression, exp.Except):
+            query_type = "EXCEPT"
+        elif expression.key:
+            query_type = expression.key.upper()
+
         return {
-            "query_type": expression.key.upper(),
+            "query_type": query_type,
             "tables": tables,
             "columns": columns,
-            "has_where": where is not None,
-            "has_group_by": group is not None,
-            "has_order_by": order is not None,
-            "has_limit": limit is not None,
+            "has_where": has_where,
+            "has_group_by": has_group_by,
+            "has_order_by": has_order_by,
+            "has_limit": has_limit,
         }
 
     def build_logical_plan(self, sql: str) -> PlanNode:
         expression = self.parse(sql)
         self.validate_select_only(expression)
+
+        if not isinstance(expression, exp.Select):
+            raise UnsupportedQueryError(
+                "Logical planning currently supports only simple SELECT queries"
+            )
 
         from_clause = expression.args.get("from_")
         if from_clause is None or from_clause.this is None:
@@ -172,7 +197,6 @@ class QueryParser:
                 children=[current],
             )
 
-        columns: list[str] = []
         projections: list[dict[str, str]] = []
         for item in select_expressions:
             if isinstance(item, exp.Star):
@@ -232,7 +256,7 @@ class QueryParser:
             )
 
         return current
-    
+
     def _literal_value(self, node):
         if isinstance(node, exp.Literal):
             if node.is_string:
@@ -244,6 +268,6 @@ class QueryParser:
             except ValueError:
                 return node.this
         return node.sql()
-    
+
     def has_join(self, expression: exp.Expression) -> bool:
         return any(True for _ in expression.find_all(exp.Join))

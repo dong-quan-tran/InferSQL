@@ -99,9 +99,8 @@ class QueryExecuteResponse(BaseModel):
     row_count: int
     columns: list[str]
     rows: list[dict[str, Any]]
-    logical_plan: PlanNode
-    physical_plan: PlanNode
+    logical_plan: PlanNode | None = None
+    physical_plan: PlanNode | None = None
     debug: DebugInfo | None = None
-
 
 PlanNode.model_rebuild()

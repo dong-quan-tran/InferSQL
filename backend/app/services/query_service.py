@@ -43,6 +43,16 @@ class QueryService:
         if self.settings.seed_demo_data and "prices" not in self.dataset_registry.list_tables():
             self._seed_demo_data()
 
+    def _has_top_level_derived_from(self, expression: exp.Expression) -> bool:
+        if not isinstance(expression, exp.Select):
+            return False
+
+        from_clause = expression.args.get("from_")
+        if from_clause is None or from_clause.this is None:
+            return False
+
+        return isinstance(from_clause.this, exp.Subquery)
+
     def validate(self, sql: str, request_id: str | None = None, debug: bool = False):
         normalized_sql = " ".join(sql.strip().split())
 
@@ -122,6 +132,11 @@ class QueryService:
         expression = self.query_parser.parse(normalized_sql)
         self.query_parser.validate_select_only(expression)
 
+        if not self._supports_custom_planner(expression):
+            raise UnsupportedQueryError(
+                "Planning currently supports only simple SELECT queries"
+            )
+
         self._validate_referenced_schema(normalized_sql)
         compiled = self.query_compiler.compile(sql)
 
@@ -177,7 +192,6 @@ class QueryService:
 
         expression = self.query_parser.parse(normalized_sql)
         self.query_parser.validate_select_only(expression)
-
         self._validate_referenced_schema(normalized_sql)
 
         try:
@@ -193,14 +207,16 @@ class QueryService:
             UnsupportedQueryError,
         ):
             raise
-        except Exception as exc:
+        except BaseException as exc:
             raise self._map_datafusion_error(exc) from exc
 
-        compiled = self.query_compiler.compile(sql)
+        compiled = None
         dataset = None
-        scan_node = self._find_node(compiled.logical_plan, "Scan")
-        if scan_node is not None:
-            dataset = scan_node.details.get("table")
+        if self._supports_custom_planner(expression):
+            compiled = self.query_compiler.compile(sql)
+            scan_node = self._find_node(compiled.logical_plan, "Scan")
+            if scan_node is not None:
+                dataset = scan_node.details.get("table")
 
         logger.info(
             "query executed",
@@ -213,8 +229,8 @@ class QueryService:
             "row_count": execution_result.row_count,
             "columns": execution_result.columns,
             "rows": execution_result.rows,
-            "logical_plan": compiled.logical_plan.model_dump(),
-            "physical_plan": compiled.physical_plan.model_dump(),
+            "logical_plan": compiled.logical_plan.model_dump() if compiled else None,
+            "physical_plan": compiled.physical_plan.model_dump() if compiled else None,
         }
 
         if debug:
@@ -289,17 +305,26 @@ class QueryService:
             raise EmptyQueryError("SQL must not be empty")
 
         expression = self.query_parser.parse(normalized_sql)
+        self._validate_select_lists(expression)
 
         tables = self._extract_referenced_tables(expression)
-        if not tables:
+        has_derived_from = self._has_top_level_derived_from(expression)
+
+        if not tables and not has_derived_from:
             raise UnsupportedQueryError("Query must reference a dataset")
 
         alias_to_table = self._build_alias_to_table_map(expression)
-        available_columns_by_table = self._load_available_columns_by_table(tables)
+        available_columns_by_table = self._load_available_columns_by_table(tables) if tables else {}
 
         self._validate_columns(expression, alias_to_table, available_columns_by_table)
 
-        if len(tables) == 1:
+        if (
+            len(tables) == 1
+            and isinstance(expression, exp.Select)
+            and not has_derived_from
+            and expression.find(exp.Subquery) is None
+            and not self._has_set_operation(expression)
+        ):
             dataset_name = tables[0]
             available_columns = sorted(available_columns_by_table[dataset_name])
             self._validate_single_table_grouping(expression, dataset_name, available_columns)
@@ -309,16 +334,20 @@ class QueryService:
                 available_columns=available_columns,
             )
 
+        merged_columns = sorted(
+            {
+                column_name
+                for column_names in available_columns_by_table.values()
+                for column_name in column_names
+            }
+        )
+
         return SchemaReferenceSummary(
-            dataset_name="__multiple__",
-            columns=self._extract_column_names(expression),
-            available_columns=sorted(
-                {
-                    column_name
-                    for column_names in available_columns_by_table.values()
-                    for column_name in column_names
-                }
+            dataset_name="__derived__" if has_derived_from and not tables else (
+                "__multiple__" if len(tables) > 1 else (tables[0] if tables else "__derived__")
             ),
+            columns=self._extract_column_names(expression),
+            available_columns=merged_columns,
         )
 
     def _extract_referenced_tables(self, expression: exp.Expression) -> list[str]:
@@ -326,6 +355,9 @@ class QueryService:
         seen: set[str] = set()
 
         for table in expression.find_all(exp.Table):
+            if self._is_derived_alias_table(table):
+                continue
+
             name = table.name
             if not name or name in seen:
                 continue
@@ -338,6 +370,9 @@ class QueryService:
         alias_to_table: dict[str, str] = {}
 
         for table in expression.find_all(exp.Table):
+            if self._is_derived_alias_table(table):
+                continue
+
             table_name = table.name
             if not table_name:
                 continue
@@ -369,6 +404,12 @@ class QueryService:
         alias_to_table: dict[str, str],
         available_columns_by_table: dict[str, set[str]],
     ) -> None:
+        derived_aliases = {
+            subquery.alias_or_name
+            for subquery in expression.find_all(exp.Subquery)
+            if subquery.alias_or_name
+        }
+
         for column in expression.find_all(exp.Column):
             column_name = column.name
             if not column_name or column_name == "*":
@@ -377,17 +418,21 @@ class QueryService:
             table_alias = column.table
 
             if table_alias:
+                if table_alias in derived_aliases:
+                    continue
+
                 dataset_name = alias_to_table.get(table_alias)
                 if dataset_name is None:
-                    raise UnknownDatasetError(
-                        f"Unknown dataset or alias '{table_alias}'"
-                    )
+                    raise UnknownDatasetError(f"Unknown dataset or alias '{table_alias}'")
 
                 if column_name not in available_columns_by_table[dataset_name]:
                     raise UnknownColumnError(
                         f"Unknown column '{column_name}' on dataset '{dataset_name}'"
                     )
 
+                continue
+
+            if self._column_is_within_subquery_scope(column):
                 continue
 
             matching_datasets = [
@@ -409,6 +454,7 @@ class QueryService:
                 raise UnsupportedQueryError(
                     f"Ambiguous unqualified column '{column_name}' referenced across datasets: {dataset_list}"
                 )
+        
 
     def _extract_column_names(self, expression: exp.Expression) -> list[str]:
         names: list[str] = []
@@ -490,6 +536,14 @@ class QueryService:
                     f"Columns {missing_list} must appear in GROUP BY or be aggregated"
                 )
 
+    def _validate_select_lists(self, expression: exp.Expression) -> None:
+        for select in expression.find_all(exp.Select):
+            select_expressions = select.expressions or []
+            if not select_expressions:
+                raise UnsupportedQueryError(
+                    "Query must select at least one column or expression"
+                )
+
     def _extract_quoted_identifier(self, message: str) -> str | None:
         patterns = [
             r"'([^']+)'",
@@ -501,9 +555,12 @@ class QueryService:
                 return match.group(1)
         return None
 
-    def _map_datafusion_error(self, exc: Exception) -> Exception:
+    def _map_datafusion_error(self, exc: BaseException) -> Exception:
         message = str(exc or "").strip()
         lowered = message.lower()
+
+        if "panic" in lowered or exc.__class__.__name__ == "PanicException":
+            return UnsupportedQueryError(f"DataFusion execution error: {message}")
 
         if (
             "sql parser error" in lowered
@@ -572,3 +629,54 @@ class QueryService:
                 return match
 
         return None
+
+    def _is_derived_alias_table(self, table: exp.Table) -> bool:
+        parent = table.parent
+        while parent is not None:
+            if isinstance(parent, exp.Subquery):
+                return True
+            parent = parent.parent
+        return False
+
+    def _is_derived_alias_name(self, expression: exp.Expression, alias_name: str) -> bool:
+        for subquery in expression.find_all(exp.Subquery):
+            alias = subquery.alias_or_name
+            if alias == alias_name:
+                return True
+        return False
+
+    def _column_is_within_subquery_scope(self, column: exp.Column) -> bool:
+        parent = column.parent
+        while parent is not None:
+            if isinstance(parent, exp.Subquery):
+                from_or_join_parent = parent.parent
+                if isinstance(from_or_join_parent, (exp.From, exp.Join)):
+                    return False
+                return True
+            parent = parent.parent
+        return False
+
+    def _has_set_operation(self, expression: exp.Expression) -> bool:
+        return expression.find(exp.Union) is not None
+
+    def _supports_custom_planner(self, expression: exp.Expression) -> bool:
+        if not isinstance(expression, exp.Select):
+            return False
+
+        if expression.find(exp.Subquery) is not None:
+            return False
+
+        if expression.find(exp.Union) is not None:
+            return False
+
+        if expression.find(exp.Intersect) is not None:
+            return False
+
+        if expression.find(exp.Except) is not None:
+            return False
+
+        where = expression.args.get("where")
+        if where is not None and not isinstance(where.this, (exp.EQ, exp.NEQ, exp.GT, exp.GTE, exp.LT, exp.LTE)):
+            return False
+
+        return True
