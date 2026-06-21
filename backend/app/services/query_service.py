@@ -20,6 +20,7 @@ from app.services.datafusion_runner import DataFusionRunner
 from app.services.query_compiler import QueryCompiler
 from app.services.query_runner import QueryRunner
 
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -464,30 +465,84 @@ class QueryService:
                     f"Columns {missing_list} must appear in GROUP BY or be aggregated"
                 )
 
+    def _extract_quoted_identifier(self, message: str) -> str | None:
+        patterns = [
+            r"'([^']+)'",
+            r'"([^"]+)"',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, message)
+            if match:
+                return match.group(1)
+        return None
+    
     def _map_datafusion_error(self, exc: Exception) -> Exception:
-        message = str(exc)
+        message = str(exc or "").strip()
         lowered = message.lower()
 
-        if "sql parser error" in lowered or "parser error" in lowered:
+        # 1) Syntax / parser failures
+        if (
+            "sql parser error" in lowered
+            or "parser error" in lowered
+            or "parse error" in lowered
+            or "syntax error" in lowered
+        ):
             return InvalidQuerySyntaxError(message)
 
-        if "schema error" in lowered or "field not found" in lowered:
-            return UnknownColumnError(message)
-
-        if "no table named" in lowered or "table not found" in lowered:
+        # 2) Unknown dataset / table failures
+        if (
+            "no table named" in lowered
+            or "table not found" in lowered
+            or "unresolved table" in lowered
+            or "unknown table" in lowered
+        ):
+            ident = self._extract_quoted_identifier(message)
+            if ident:
+                return UnknownDatasetError(f"Unknown dataset '{ident}'")
             return UnknownDatasetError(message)
 
-        if "ambiguous" in lowered and "column" in lowered:
+        # 3) Ambiguous column failures
+        if (
+            "ambiguous reference to unqualified field" in lowered
+            or ("ambiguous" in lowered and "column" in lowered)
+            or ("ambiguous" in lowered and "field" in lowered)
+        ):
             return UnsupportedQueryError(message)
 
-        if "plan(" in lowered or "planning error" in lowered:
+        # 4) Unknown column / field-not-found failures
+        if (
+            "field not found" in lowered
+            or "no field named" in lowered
+            or "schema error" in lowered
+            or "schemaerror(fieldnotfound" in lowered
+            or "unqualified_field_not_found" in lowered
+            or "unresolved column" in lowered
+            or "could not be resolved from available columns" in lowered
+        ):
+            ident = self._extract_quoted_identifier(message)
+            if ident:
+                return UnknownColumnError(f"Unknown column '{ident}'")
+            return UnknownColumnError(message)
+
+        # 5) Unsupported or planning-time semantic failures
+        if (
+            "not implemented" in lowered
+            or "this feature is not implemented" in lowered
+            or "unsupported logical plan" in lowered
+            or "unsupported function" in lowered
+            or "unsupported syntax" in lowered
+            or "planning error" in lowered
+            or "error during planning" in lowered
+            or "failed to optimize plan" in lowered
+            or "wrong number of columns in set expression" in lowered
+            or "incompatible types" in lowered
+            or "non-aggregate expressions" in lowered
+        ):
             return UnsupportedQueryError(message)
 
-        if "not implemented" in lowered or "unsupported" in lowered:
-            return UnsupportedQueryError(message)
-
+        # 6) Internal/runtime fallback
         return UnsupportedQueryError(f"DataFusion execution error: {message}")
-
+    
     def _find_node(self, node, node_type: str):
         if node.node_type == node_type:
             return node

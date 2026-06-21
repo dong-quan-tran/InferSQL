@@ -360,3 +360,39 @@ def test_query_execute_unknown_column_returns_400(client: TestClient) -> None:
     payload = response.json()
     assert payload["error"]["code"] == "UNKNOWNCOLUMNERROR"
     assert "Unknown column 'missing_column'" in payload["error"]["message"]
+
+
+def test_query_execute_malformed_subquery_returns_unsupported(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT symbol
+                FROM prices
+                WHERE symbol IN (SELECT FROM prices_nulls)
+            """
+        },
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "UNSUPPORTEDQUERYERROR"
+    
+
+def test_query_execute_invalid_union_shape_returns_unsupported(client: TestClient) -> None:
+    # Different column counts between the two SELECT branches.
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT symbol FROM prices
+                UNION ALL
+                SELECT symbol, close FROM prices
+            """
+        },
+    )
+
+    # DataFusion typically surfaces this as a planning/schema error; we map to UNSUPPORTEDQUERYERROR.
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "UNSUPPORTEDQUERYERROR"
