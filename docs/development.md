@@ -94,7 +94,7 @@ Product-level validation (using SQLGlot and registry metadata) is responsible fo
 - Ensuring referenced datasets exist in the registry.
 - Ensuring referenced columns exist on those datasets.
 - Detecting ambiguous unqualified columns across multiple datasets.
-- Enforcing a small number of product guardrails, including rejection of `SELECT *` with `GROUP BY`.
+- Enforcing a small number of product guardrails, including rejection of `SELECT *` with `GROUP BY` for single-table queries.
 
 DataFusion is responsible for:
 
@@ -109,8 +109,12 @@ DataFusion is responsible for:
 
 The rule of thumb:
 
-- `/query/validate` is a **precheck** focusing on schema and product guardrails.
-- `/query/execute` and broad `/query/plan` rely on DataFusion for deep SQL semantics.
+- `/query/validate` is a **precheck**:
+  - enforces `SELECT`-only,
+  - checks datasets and columns against the registry,
+  - applies the single-table `SELECT *` with `GROUP BY` guardrail,
+  - does not attempt to re-implement engine-level grouped/aggregate/window semantics.
+- `/query/execute` and broad `/query/plan` treat DataFusion as the source of truth for SQL semantics and only normalize errors into product types.
 
 ### Current `/query/validate` behavior
 
@@ -124,7 +128,7 @@ The rule of thumb:
     "sql": "...",
     "normalized_sql": "...",
     "is_valid": true,
-    "query_type": "select",
+    "query_type": "SELECT",
     "errors": [],
     "tables": ["prices"],
     "columns": ["symbol", "close"],
@@ -219,6 +223,29 @@ The rule of thumb:
   ```
 
 - Logical and physical plans are included only where they are available and meaningful.
+
+### Debug metadata contract
+
+All three endpoints share the same debug metadata shape when `debug=true`:
+
+- `request_id` (string): request correlation ID if available, `"unknown"` otherwise.
+- `total_ms` (float): total wall-clock time in milliseconds for the operation.
+- `stage` (string): one of `"validate"`, `"plan"`, `"execute"`.
+- `engine` (string or null):
+  - `null` for `/query/validate`,
+  - `"infersql-planner"` for simple `/query/plan` using the custom planner,
+  - `"datafusion"` for DataFusion-backed plan/execute paths.
+- `error_origin` (string or null):
+  - `null` on success,
+  - `"engine_execution"` for errors mapped from DataFusion execution or planning failures where available.
+- `features` (array of strings):
+  - zero or more feature flags inferred from the parsed SQL:
+    - `"join"` for queries containing joins,
+    - `"set_op"` for queries containing set operations (`UNION`, `INTERSECT`, `EXCEPT`),
+    - `"window"` for queries containing window functions,
+    - `"derived_from"` for queries with a top-level derived table in `FROM`.
+
+The `features` array is always present in debug output and defaults to an empty list for queries where no feature flags apply.
 
 ### Error responses
 
