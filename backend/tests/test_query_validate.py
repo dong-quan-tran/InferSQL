@@ -293,3 +293,67 @@ def test_query_validate_join_ambiguous_unqualified_column_fails(client: TestClie
     payload = response.json()
     assert payload["is_valid"] is False
     assert any("Ambiguous unqualified column 'symbol'" in error for error in payload["errors"])
+
+
+def test_query_validate_rejects_select_star_with_group_by(client: TestClient) -> None:
+    response = client.post(
+        "/query/validate",
+        json={
+            "sql": """
+                SELECT *
+                FROM prices
+                GROUP BY symbol
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    # Product-level guardrail should mark this as invalid.
+    assert payload["is_valid"] is False
+    assert payload["query_type"] == "SELECT"
+    assert payload["tables"] == ["prices"]
+
+    # At least one error should mention SELECT * + GROUP BY being unsupported.
+    assert any(
+        "SELECT * with GROUP BY is not supported right now" in msg
+        for msg in payload["errors"]
+    )
+
+
+def test_query_validate_does_not_block_engine_owned_grouped_semantics(
+    client: TestClient,
+) -> None:
+    # Mixed aggregate and non-aggregate expressions without GROUP BY.
+    # Product validator should NOT reject this; engine decides later.
+    sql = """
+        SELECT SUM(close) AS total_close, close + 1 AS close_plus
+        FROM prices
+    """
+
+    # Validate should pass at product level.
+    validate_response = client.post("/query/validate", json={"sql": sql})
+    assert validate_response.status_code == 200
+    validate_payload = validate_response.json()
+
+    assert validate_payload["is_valid"] is True
+    assert validate_payload["errors"] == []
+    assert validate_payload["tables"] == ["prices"]
+    assert "total_close" in validate_payload["columns"] or "close" in validate_payload["columns"]
+
+    # Execute may succeed or fail depending on engine behavior, but if it fails
+    # it must be normalized to a structured error.
+    execute_response = client.post("/query/execute", json={"sql": sql})
+
+    if execute_response.status_code == 200:
+        exec_payload = execute_response.json()
+        assert "total_close" in exec_payload["columns"]
+    else:
+        assert execute_response.status_code == 400
+        error = execute_response.json()["error"]
+        assert error["code"] in (
+            "UNSUPPORTEDQUERYERROR",
+            "UNKNOWNCOLUMNERROR",
+            "INVALIDQUERYSYNTAXERROR",
+        )
