@@ -157,14 +157,22 @@ class QueryService:
             explain_rows=explain_rows,
         )
 
-    def validate(self, sql: str, request_id: str | None = None, debug: bool = False):
-        start_time = time.perf_counter()
-        normalized_sql = " ".join(sql.strip().split())
+    # -------------------------------------------------------------------------
+    # Shared analysis
+    # -------------------------------------------------------------------------
 
-        logger.info(
-            "validating query",
-            extra={"stage": "validate", "dataset": None},
-        )
+    def _analyze_query(
+        self,
+        sql: str,
+    ) -> tuple[exp.Expression, ValidationSummary]:
+        """
+        Normalizes SQL, parses, extracts metadata, and applies product-level
+        validation (select-only + schema/column checks). This is the single
+        precheck path for validate/plan/execute.
+        """
+        normalized_sql = " ".join(sql.strip().split())
+        if not normalized_sql:
+            raise EmptyQueryError("SQL must not be empty")
 
         expression = self.query_parser.parse(normalized_sql)
         summary_dict = self.query_parser.summarize(normalized_sql)
@@ -201,6 +209,24 @@ class QueryService:
                     "error_code": exc.__class__.__name__.upper(),
                 },
             )
+
+        return expression, summary
+
+    # -------------------------------------------------------------------------
+    # Public operations
+    # -------------------------------------------------------------------------
+
+    def validate(self, sql: str, request_id: str | None = None, debug: bool = False):
+        start_time = time.perf_counter()
+
+        logger.info(
+            "validating query",
+            extra={"stage": "validate", "dataset": None},
+        )
+
+        expression, summary = self._analyze_query(sql)
+        # expression is unused directly here but returned for symmetry with plan/execute.
+        del expression
 
         response = {
             "sql": sql,
@@ -243,8 +269,44 @@ class QueryService:
         expression = self.query_parser.parse(normalized_sql)
         self.query_parser.validate_select_only(expression)
 
+        # Broad SQL with a top-level derived table in FROM should bypass
+        # product schema validation and be delegated directly to DataFusion.
+        if self._has_top_level_derived_from(expression):
+            response = self._plan_with_datafusion(
+                sql=sql,
+                normalized_sql=normalized_sql,
+            )
+
+            logger.info(
+                "query planned",
+                extra={"stage": "plan", "dataset": None},
+            )
+
+            total_ms = (time.perf_counter() - start_time) * 1000.0
+
+            if debug:
+                response["debug"] = self._build_debug_info(
+                    request_id=request_id,
+                    total_ms=total_ms,
+                    stage="plan",
+                    engine="datafusion",
+                )
+
+            return response
+
+        _, summary = self._analyze_query(sql)
+
+        if not summary.is_valid and summary.errors:
+            message = summary.errors[0]
+            if "Invalid SQL syntax" in message:
+                raise InvalidQuerySyntaxError(message)
+            if message.startswith("Unknown dataset"):
+                raise UnknownDatasetError(message)
+            if message.startswith("Unknown column"):
+                raise UnknownColumnError(message)
+            raise UnsupportedQueryError(message)
+
         if self._supports_custom_planner(expression):
-            self._validate_referenced_schema(normalized_sql)
             compiled = self.query_compiler.compile(sql)
 
             dataset = None
@@ -323,13 +385,19 @@ class QueryService:
             extra={"stage": "execute", "dataset": None},
         )
 
-        normalized_sql = " ".join(sql.strip().split())
-        if not normalized_sql:
-            raise EmptyQueryError("SQL must not be empty")
+        expression, summary = self._analyze_query(sql)
 
-        expression = self.query_parser.parse(normalized_sql)
-        self.query_parser.validate_select_only(expression)
-        self._validate_referenced_schema(normalized_sql)
+        if not summary.is_valid and summary.errors:
+            message = summary.errors[0]
+            if "Invalid SQL syntax" in message:
+                raise InvalidQuerySyntaxError(message)
+            if message.startswith("Unknown dataset"):
+                raise UnknownDatasetError(message)
+            if message.startswith("Unknown column"):
+                raise UnknownColumnError(message)
+            raise UnsupportedQueryError(message)
+
+        normalized_sql = summary.normalized_sql
 
         try:
             execution_result = self.datafusion_runner.run(
