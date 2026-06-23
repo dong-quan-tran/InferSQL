@@ -7,6 +7,8 @@ import time
 import pyarrow as pa
 from sqlglot import exp
 
+import hashlib
+
 from app.core.catalog.registry import DatasetNotFoundError, DatasetRegistry
 from app.core.engine.parser import QueryParser
 from app.core.exceptions import (
@@ -43,6 +45,10 @@ class QueryService:
 
         if self.settings.seed_demo_data and "prices" not in self.dataset_registry.list_tables():
             self._seed_demo_data()
+
+    def _hash_sql(self, normalized_sql: str) -> str:
+        return hashlib.sha256(normalized_sql.encode("utf-8")).hexdigest()[:16]
+    
 
     def _build_debug_info(
         self,
@@ -459,9 +465,18 @@ class QueryService:
             if scan_node is not None:
                 dataset = scan_node.details.get("table")
 
+        total_ms = (time.perf_counter() - start_time) * 1000.0
+
         logger.info(
             "query executed",
-            extra={"stage": "execute", "dataset": dataset},
+            extra={
+                "stage": "execute",
+                "dataset": dataset,
+                "engine": "datafusion",
+                "total_ms": total_ms,
+                "sql_hash": self._hash_sql(normalized_sql),
+                "error_code": "-",
+            },
         )
 
         response = {
@@ -473,8 +488,6 @@ class QueryService:
             "logical_plan": compiled.logical_plan.model_dump() if compiled else None,
             "physical_plan": compiled.physical_plan.model_dump() if compiled else None,
         }
-
-        total_ms = (time.perf_counter() - start_time) * 1000.0
 
         if debug:
             features = self._compute_features(expression)
