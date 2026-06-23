@@ -139,9 +139,61 @@ def test_query_validate_rejects_select_star_with_group_by(client: TestClient) ->
     )
 
     assert response.status_code == 200
-    data = response.json()
-    assert data["is_valid"] is False
-    assert "SELECT * with GROUP BY is not supported right now" in data["errors"]
+    payload = response.json()
+
+    assert payload["is_valid"] is False
+    assert "SELECT * with GROUP BY is not supported right now" in payload["errors"]
+    assert payload["has_group_by"] is True
+
+
+def test_query_execute_rejects_select_star_with_group_by(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={"sql": "SELECT * FROM prices GROUP BY symbol"},
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+
+    assert payload["error"]["type"] == "UnsupportedQueryError"
+    assert payload["error"]["message"] == "SELECT * with GROUP BY is not supported right now"
+
+
+def test_group_by_semantics_are_engine_enforced(client: TestClient) -> None:
+    sql = "SELECT symbol, close FROM prices GROUP BY symbol"
+
+    validate_response = client.post(
+        "/query/validate",
+        json={"sql": sql},
+    )
+    assert validate_response.status_code == 200
+    validate_payload = validate_response.json()
+
+    assert validate_payload["is_valid"] is True
+    assert validate_payload["errors"] == []
+
+    execute_response = client.post(
+        "/query/execute",
+        json={"sql": sql},
+    )
+    assert execute_response.status_code == 400
+    execute_payload = execute_response.json()
+
+    assert execute_payload["error"]["type"] == "UnsupportedQueryError"
+
+
+def test_group_by_aggregate_executes_successfully(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={"sql": "SELECT symbol, SUM(close) AS total_close FROM prices GROUP BY symbol"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["columns"] == ["symbol", "total_close"]
+    assert payload["row_count"] == 5
+    assert len(payload["rows"]) == 5
 
 
 def test_validate_join_query_reports_unknown_dataset(client: TestClient) -> None:
@@ -181,6 +233,30 @@ def test_query_validate_join_is_allowed(client: TestClient) -> None:
     assert payload["is_valid"] is True
 
 
+def test_query_validate_allows_left_join_with_qualified_columns(client: TestClient) -> None:
+    response = client.post(
+        "/query/validate",
+        json={
+            "sql": """
+                SELECT p.symbol, n.close AS matched_close
+                FROM prices AS p
+                LEFT JOIN prices_nulls AS n
+                  ON p.symbol = n.symbol
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["is_valid"] is True
+    assert payload["errors"] == []
+    assert set(payload["tables"]) == {"prices", "prices_nulls"}
+    # Columns list is a flat set of referenced column names; exact order is not important.
+    assert "symbol" in payload["columns"]
+    assert "close" in payload["columns"]
+
+
 def test_query_validate_join_unknown_alias_column_fails(client: TestClient) -> None:
     response = client.post(
         "/query/validate",
@@ -217,94 +293,3 @@ def test_query_validate_join_ambiguous_unqualified_column_fails(client: TestClie
     payload = response.json()
     assert payload["is_valid"] is False
     assert any("Ambiguous unqualified column 'symbol'" in error for error in payload["errors"])
-
-
-def test_validate_rejects_select_star_with_group_by(client):
-    response = client.post(
-        "/query/validate",
-        json={"sql": "SELECT * FROM prices GROUP BY symbol"},
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
-
-    assert payload["is_valid"] is False
-    assert "SELECT * with GROUP BY is not supported right now" in payload["errors"]
-    assert payload["has_group_by"] is True
-
-
-def test_execute_rejects_select_star_with_group_by(client):
-    response = client.post(
-        "/query/execute",
-        json={"sql": "SELECT * FROM prices GROUP BY symbol"},
-    )
-
-    assert response.status_code == 400
-    payload = response.json()
-
-    assert payload["error"]["type"] == "UnsupportedQueryError"
-    assert payload["error"]["message"] == "SELECT * with GROUP BY is not supported right now"
-
-
-def test_group_by_semantics_are_engine_enforced(client):
-    sql = "SELECT symbol, close FROM prices GROUP BY symbol"
-
-    validate_response = client.post(
-        "/query/validate",
-        json={"sql": sql},
-    )
-    assert validate_response.status_code == 200
-    validate_payload = validate_response.json()
-
-    assert validate_payload["is_valid"] is True
-    assert validate_payload["errors"] == []
-
-    execute_response = client.post(
-        "/query/execute",
-        json={"sql": sql},
-    )
-    assert execute_response.status_code == 400
-    execute_payload = execute_response.json()
-
-    assert execute_payload["error"]["type"] == "UnsupportedQueryError"
-
-
-def test_group_by_aggregate_executes_successfully(client):
-    response = client.post(
-        "/query/execute",
-        json={"sql": "SELECT symbol, SUM(close) AS total_close FROM prices GROUP BY symbol"},
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
-
-    assert payload["columns"] == ["symbol", "total_close"]
-    assert payload["row_count"] == 5
-    assert len(payload["rows"]) == 5
-
-
-from fastapi.testclient import TestClient
-
-
-def test_query_validate_allows_left_join_with_qualified_columns(client: TestClient) -> None:
-    response = client.post(
-        "/query/validate",
-        json={
-            "sql": """
-                SELECT p.symbol, n.close AS matched_close
-                FROM prices AS p
-                LEFT JOIN prices_nulls AS n
-                  ON p.symbol = n.symbol
-            """
-        },
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
-
-    assert payload["is_valid"] is True
-    assert payload["errors"] == []
-    assert set(payload["tables"]) == {"prices", "prices_nulls"}
-    # Columns list is a flat set of referenced column names; exact order is not important
-    assert "symbol" in payload["columns"]
-    assert "close" in payload["columns"]

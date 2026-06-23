@@ -260,7 +260,7 @@ def test_query_plan_broad_join_uses_datafusion_engine(client: TestClient) -> Non
     assert payload["physical_plan"]["node_type"] == "DataFusionPhysicalPlan"
     assert isinstance(payload["logical_plan"]["details"]["lines"], list)
     assert isinstance(payload["physical_plan"]["details"]["lines"], list)
-    
+
 
 def test_query_plan_subquery_in_from_uses_datafusion_engine(client: TestClient) -> None:
     response = client.post(
