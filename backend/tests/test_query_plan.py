@@ -311,3 +311,32 @@ def test_query_plan_debug_metadata_includes_engine(client: TestClient) -> None:
     assert debug["stage"] == "plan"
     assert debug["engine"] in ("infersql-planner", "datafusion")
     assert isinstance(debug["total_ms"], (int, float))
+
+
+def test_query_plan_left_join_uses_datafusion(client: TestClient) -> None:
+    response = client.post(
+        "/query/plan",
+        json={
+            "sql": """
+                SELECT p.symbol, n.close AS matched_close
+                FROM prices AS p
+                LEFT JOIN prices_nulls AS n
+                  ON p.symbol = n.symbol
+                ORDER BY p.symbol
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    # Broad join queries should go through the DataFusion-backed planner.
+    assert payload["engine"] == "datafusion"
+    assert payload["sql"].strip().startswith("SELECT")
+    assert "LEFT JOIN" in payload["normalized_sql"].upper()
+
+    logical_plan = payload["logical_plan"]
+    assert logical_plan["node_type"] == "DataFusionLogicalPlan"
+    lines = logical_plan["details"]["lines"]
+    # We don’t depend on exact formatting; just ensure JOIN appears somewhere.
+    assert any("JOIN" in line.upper() for line in lines)

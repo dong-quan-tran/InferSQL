@@ -281,3 +281,30 @@ def test_group_by_aggregate_executes_successfully(client):
     assert payload["columns"] == ["symbol", "total_close"]
     assert payload["row_count"] == 5
     assert len(payload["rows"]) == 5
+
+
+from fastapi.testclient import TestClient
+
+
+def test_query_validate_allows_left_join_with_qualified_columns(client: TestClient) -> None:
+    response = client.post(
+        "/query/validate",
+        json={
+            "sql": """
+                SELECT p.symbol, n.close AS matched_close
+                FROM prices AS p
+                LEFT JOIN prices_nulls AS n
+                  ON p.symbol = n.symbol
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["is_valid"] is True
+    assert payload["errors"] == []
+    assert set(payload["tables"]) == {"prices", "prices_nulls"}
+    # Columns list is a flat set of referenced column names; exact order is not important
+    assert "symbol" in payload["columns"]
+    assert "close" in payload["columns"]
