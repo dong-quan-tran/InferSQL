@@ -10,10 +10,9 @@ from app.schemas.copilot import (
     CopilotValidationResult,
 )
 from app.services.copilot_schema_context import CopilotSchemaContextBuilder
+from app.services.copilot_schema_selector import CopilotSchemaSelector
 from app.services.llm.base import LLMProvider
 from app.services.query_service import QueryService
-from app.services.copilot_schema_selector import CopilotSchemaSelector
-
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +41,13 @@ class CopilotService:
         schema_context = self._build_schema_context(question)
         retry_history: list[CopilotRetryStep] = []
 
-        candidate = self.llm_provider.generate_sql_candidate(
+        prompt_question = self._build_generation_prompt(
             question=question,
+            schema_context=schema_context,
+        )
+
+        candidate = self.llm_provider.generate_sql_candidate(
+            question=prompt_question,
             schema_context=schema_context,
         )
         validation = self._validate_candidate(candidate, request_id=request_id)
@@ -130,6 +134,26 @@ class CopilotService:
         selected_tables = self.schema_selector.select_tables(question)
         return self.schema_context_builder.build(table_names=selected_tables)
 
+    def _build_generation_prompt(self, question: str, schema_context: str) -> str:
+        return (
+            "Generate a SQL query for the user's question.\n\n"
+            f"User question:\n{question}\n\n"
+            f"Schema context:\n{schema_context}\n\n"
+            "SQL capability rules:\n"
+            "- Return only a SELECT query.\n"
+            "- Use only the provided datasets and columns.\n"
+            "- Multi-table SQL is allowed when needed, including INNER JOIN and LEFT JOIN.\n"
+            "- Subqueries are allowed where supported, including IN subqueries, derived tables in FROM, and scalar subqueries.\n"
+            "- UNION and UNION ALL are allowed where needed.\n"
+            "- GROUP BY and HAVING are allowed where needed.\n"
+            "- Do not use INSERT, UPDATE, DELETE, CREATE, DROP, or other non-SELECT statements.\n"
+            "- Do not invent datasets, columns, or join keys.\n"
+            "- Prefer explicit table aliases and qualify columns in multi-table queries.\n"
+            "- If two tables share a column name, qualify the column reference.\n"
+            "- Avoid ORDER BY on select-list aliases; order by the underlying column or expression instead.\n"
+            "- Keep the query as simple as possible while correctly answering the question.\n"
+        )
+
     def _build_repair_prompt(
         self,
         question: str,
@@ -138,6 +162,34 @@ class CopilotService:
         validation: CopilotValidationResult,
     ) -> str:
         error_lines = "\n".join(f"- {error}" for error in validation.errors) or "- Unknown validation error"
+        lowered_errors = " ".join(validation.errors).lower()
+
+        extra_guidance: list[str] = []
+
+        if "ambiguous" in lowered_errors:
+            extra_guidance.append(
+                "- Fix ambiguous column references by qualifying them with table names or aliases."
+            )
+
+        if "unknown column" in lowered_errors:
+            extra_guidance.append(
+                "- Replace unknown columns only with real columns from the provided schema context."
+            )
+
+        if "unknown dataset" in lowered_errors or "unknown table" in lowered_errors:
+            extra_guidance.append(
+                "- Replace unknown datasets only with real datasets from the provided schema context."
+            )
+
+        if "join" in lowered_errors:
+            extra_guidance.append(
+                "- Do not invent join predicates; only use join keys that clearly exist in the provided schema."
+            )
+
+        if not extra_guidance:
+            extra_guidance.append("- Fix the exact validation errors without changing the question being answered.")
+
+        extra_guidance_text = "\n".join(extra_guidance)
 
         return (
             "The previous SQL candidate was invalid.\n\n"
@@ -149,6 +201,9 @@ class CopilotService:
             "Rules:\n"
             "- Return only a valid SELECT query candidate.\n"
             "- Use only the provided datasets and columns.\n"
-            "- Keep the query single-table unless explicitly supported.\n"
-            "- Fix the exact validation errors.\n"
+            "- Multi-table queries are allowed when needed.\n"
+            "- Qualify ambiguous columns with table names or aliases.\n"
+            "- Do not invent datasets, columns, or join keys.\n"
+            "- Avoid ORDER BY on select-list aliases; order by the underlying column or expression instead.\n"
+            f"{extra_guidance_text}\n"
         )

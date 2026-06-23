@@ -90,7 +90,7 @@ class CopilotSchemaSelector:
             column_description = description["column_descriptions"].get(column_name) or ""
             score += 3 * len(question_tokens & _tokenize(column_description))
 
-            for sample_value in description.get("sample_values", {}).get(column_name, []):
+            for sample_value in description.get("column_samples", {}).get(column_name, []):
                 score += 1 * len(question_tokens & _tokenize(str(sample_value)))
 
         return score

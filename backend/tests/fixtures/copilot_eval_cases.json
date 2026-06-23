@@ -167,16 +167,20 @@
         "max_attempts": 3
     },
     {
-        "id": "unsupported_aggregate_request",
-        "category": "unsupported_feature",
+        "id": "supported_aggregate_request",
+        "category": "aggregate",
         "question": "Count how many rows are in prices",
         "execute": false,
-        "expected_valid": false,
-        "expected_error_any_of": [
-            "Unsupported SQL expression",
-            "Generated SQL does not match supported SQL subset"
+        "expected_valid": true,
+        "expected_sql_contains": [
+            "SELECT",
+            "COUNT(",
+            "FROM prices"
         ],
-        "max_attempts": 3
+        "expected_columns": [
+            "count"
+        ],
+        "max_attempts": 2
     },
     {
         "id": "ambiguous_latest_stock_request",
