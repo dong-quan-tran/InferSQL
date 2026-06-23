@@ -483,6 +483,29 @@ def test_query_execute_unknown_join_alias_returns_404(client: TestClient) -> Non
     assert "Unknown dataset or alias 'x'" in payload["error"]["message"]
 
 
+def test_query_execute_debug_features_includes_join_for_join_query(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute?debug=true",
+        json={
+            "sql": """
+                SELECT p.symbol, n.close AS matched_close
+                FROM prices AS p
+                LEFT JOIN prices_nulls AS n
+                  ON p.symbol = n.symbol
+                ORDER BY p.symbol
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    debug = payload.get("debug")
+    assert debug is not None
+    features = debug.get("features")
+    assert isinstance(features, list)
+    assert "join" in features
+
+
 def test_query_execute_ambiguous_unqualified_column_returns_400(client: TestClient) -> None:
     response = client.post(
         "/query/execute",
@@ -816,6 +839,10 @@ def test_query_execute_debug_metadata_includes_timings_and_engine(client: TestCl
     assert debug["engine"] == "datafusion"
     assert isinstance(debug["total_ms"], (int, float))
 
+    # Features should always be present as a list, even if empty.
+    assert "features" in debug
+    assert isinstance(debug["features"], list)
+
 
 # Simple unknown-column / dataset tests (non-normalized-shape legacy ones)
 
@@ -884,6 +911,32 @@ def test_query_execute_window_row_number_over_partition(client: TestClient) -> N
             current_row_number += 1
 
         assert rn == current_row_number
+
+
+def test_query_execute_debug_features_includes_window_for_window_query(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute?debug=true",
+        json={
+            "sql": """
+                SELECT
+                    symbol,
+                    close,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY symbol
+                        ORDER BY close
+                    ) AS row_number
+                FROM prices
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    debug = payload.get("debug")
+    assert debug is not None
+    features = debug.get("features")
+    assert isinstance(features, list)
+    assert "window" in features
 
 
 def test_query_execute_window_lag_over_order_by(client: TestClient) -> None:

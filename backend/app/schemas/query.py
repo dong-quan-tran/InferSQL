@@ -29,7 +29,7 @@ class DebugMetadata(BaseModel):
     stage: str | None = None
     engine: str | None = None
     error_origin: str | None = None
-
+    features: list[str] | None = None
 
 class ErrorDetail(BaseModel):
     type: str
