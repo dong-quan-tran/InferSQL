@@ -615,65 +615,34 @@ class QueryService:
         dataset_name: str,
         available_columns: list[str],
     ) -> None:
+        # Tiny product guardrail only:
+        # disallow SELECT * with GROUP BY for single-table queries.
+        #
+        # All other grouped-query semantics are delegated to DataFusion.
         del dataset_name, available_columns
 
+        if not isinstance(expression, exp.Select):
+            return
+
         group = expression.args.get("group")
+        if group is None:
+            return
+
         select_expressions = expression.expressions or []
-
         if not select_expressions:
-            raise UnsupportedQueryError(
-                "Query must select at least one column or expression"
-            )
-
-        group_by_cols: set[str] = set()
-        if group is not None:
-            for group_expr in group.expressions:
-                if isinstance(group_expr, exp.Column):
-                    group_by_cols.add(group_expr.name)
-                else:
-                    raise UnsupportedQueryError(
-                        "Only plain column expressions are supported in GROUP BY right now"
-                    )
-
-        aggregate_nodes = (exp.Count, exp.Sum, exp.Avg)
-        has_aggregate = False
-        non_agg_columns: set[str] = set()
+            return
 
         for item in select_expressions:
             if isinstance(item, exp.Star):
-                if group is not None:
-                    raise UnsupportedQueryError(
-                        "SELECT * with GROUP BY is not supported right now"
-                    )
-                continue
+                raise UnsupportedQueryError(
+                    "SELECT * with GROUP BY is not supported right now"
+                )
 
             target = item.this if isinstance(item, exp.Alias) else item
 
-            if isinstance(target, aggregate_nodes):
-                has_aggregate = True
-                continue
-
-            if isinstance(target, exp.Column):
-                non_agg_columns.add(target.name)
-                continue
-
-            if group is not None:
+            if isinstance(target, exp.Star):
                 raise UnsupportedQueryError(
-                    "Only plain columns and simple aggregates are supported in grouped SELECT lists right now"
-                )
-
-        if has_aggregate and group is None and non_agg_columns:
-            column_list = ", ".join(f"'{name}'" for name in sorted(non_agg_columns))
-            raise UnsupportedQueryError(
-                f"Columns {column_list} must appear in GROUP BY or be aggregated"
-            )
-
-        if group is not None:
-            missing = sorted(non_agg_columns.difference(group_by_cols))
-            if missing:
-                missing_list = ", ".join(f"'{name}'" for name in missing)
-                raise UnsupportedQueryError(
-                    f"Columns {missing_list} must appear in GROUP BY or be aggregated"
+                    "SELECT * with GROUP BY is not supported right now"
                 )
 
     def _validate_select_lists(self, expression: exp.Expression) -> None:

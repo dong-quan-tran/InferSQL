@@ -397,8 +397,7 @@ def test_query_execute_invalid_union_shape_returns_unsupported(client: TestClien
     assert payload["error"]["code"] == "UNSUPPORTEDQUERYERROR"
 
 
-def test_query_execute_grouped_expression_is_rejected_by_validator(client: TestClient) -> None:
-    # Expression in grouped SELECT list should be caught by our grouped validator for now.
+def test_query_execute_grouped_expression_is_engine_rejected(client: TestClient) -> None:
     response = client.post(
         "/query/execute",
         json={
@@ -413,7 +412,7 @@ def test_query_execute_grouped_expression_is_rejected_by_validator(client: TestC
     assert response.status_code == 400
     payload = response.json()
     assert payload["error"]["code"] == "UNSUPPORTEDQUERYERROR"
-    assert "grouped SELECT lists" in payload["error"]["message"]
+    assert payload["error"]["type"] == "UnsupportedQueryError"
 
 
 def test_query_execute_aggregate_with_non_grouped_expression_relies_on_engine(client: TestClient) -> None:
