@@ -20,6 +20,7 @@ from app.services.ingestion_service import (
     DatasetAlreadyExistsError,
     DatasetIngestionService,
     UnsupportedDatasetFormatError,
+    DatasetLoadError
 )
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
@@ -130,6 +131,16 @@ def ingest_dataset(
                 }
             },
         )
+    except DatasetLoadError as exc:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": {
+                    "type": "ValidationError",
+                    "message": str(exc),
+                }
+            },
+        )
 
     return DatasetIngestResponse(
         name=result["name"],
@@ -172,6 +183,16 @@ def upload_dataset(
             },
         )
     except UnsupportedDatasetFormatError as exc:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": {
+                    "type": "ValidationError",
+                    "message": str(exc),
+                }
+            },
+        )
+    except DatasetLoadError as exc:
         return JSONResponse(
             status_code=400,
             content={

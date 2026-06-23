@@ -4,10 +4,7 @@ from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-
 from fastapi.testclient import TestClient
-
-from app.main import app
 
 
 def test_list_datasets_returns_catalog_metadata(client: TestClient) -> None:
@@ -51,11 +48,7 @@ def test_get_dataset_returns_404_for_unknown_dataset(client: TestClient) -> None
     assert data["error"]["message"] == "Unknown dataset 'missing_table'"
 
 
-
-client = TestClient(app)
-
-
-def test_ingest_csv_registers_dataset(tmp_path: Path) -> None:
+def test_ingest_csv_registers_dataset(client: TestClient, tmp_path: Path) -> None:
     csv_path = tmp_path / "prices.csv"
     csv_path.write_text(
         "symbol,close\nAAPL,189.12\nMSFT,425.27\n",
@@ -80,7 +73,7 @@ def test_ingest_csv_registers_dataset(tmp_path: Path) -> None:
     assert data["description"] == "CSV prices dataset"
 
 
-def test_ingest_parquet_registers_dataset(tmp_path: Path) -> None:
+def test_ingest_parquet_registers_dataset(client: TestClient, tmp_path: Path) -> None:
     parquet_path = tmp_path / "fundamentals.parquet"
     table = pa.table(
         {
@@ -108,7 +101,7 @@ def test_ingest_parquet_registers_dataset(tmp_path: Path) -> None:
     assert data["description"] == "Parquet fundamentals dataset"
 
 
-def test_upload_csv_registers_dataset(tmp_path: Path) -> None:
+def test_upload_csv_registers_dataset(client: TestClient) -> None:
     response = client.post(
         "/catalog/upload",
         data={
@@ -132,7 +125,7 @@ def test_upload_csv_registers_dataset(tmp_path: Path) -> None:
     assert data["source_path"] is not None
 
 
-def test_upload_parquet_registers_dataset(tmp_path: Path) -> None:
+def test_upload_parquet_registers_dataset(client: TestClient, tmp_path: Path) -> None:
     parquet_path = tmp_path / "upload.parquet"
     table = pa.table(
         {
@@ -165,7 +158,9 @@ def test_upload_parquet_registers_dataset(tmp_path: Path) -> None:
     assert data["source_path"] is not None
 
 
-def test_ingest_rejects_duplicate_dataset_name_by_default(tmp_path: Path) -> None:
+def test_ingest_rejects_duplicate_dataset_name_by_default(
+    client: TestClient, tmp_path: Path
+) -> None:
     csv_path = tmp_path / "prices.csv"
     csv_path.write_text(
         "symbol,close\nAAPL,189.12\nMSFT,425.27\n",
@@ -197,7 +192,9 @@ def test_ingest_rejects_duplicate_dataset_name_by_default(tmp_path: Path) -> Non
     assert data["error"]["message"] == "Dataset 'duplicate_prices' already exists"
 
 
-def test_ingest_allows_overwrite_when_requested(tmp_path: Path) -> None:
+def test_ingest_allows_overwrite_when_requested(
+    client: TestClient, tmp_path: Path
+) -> None:
     first_csv = tmp_path / "first.csv"
     first_csv.write_text(
         "symbol,close\nAAPL,189.12\nMSFT,425.27\n",
@@ -235,3 +232,92 @@ def test_ingest_allows_overwrite_when_requested(tmp_path: Path) -> None:
     assert data["name"] == "overwrite_prices"
     assert data["row_count"] == 1
     assert data["description"] == "Replacement version"
+
+
+def test_ingested_csv_dataset_is_queryable_via_execute(
+    client: TestClient, tmp_path: Path
+) -> None:
+    csv_path = tmp_path / "queryable_prices.csv"
+    csv_path.write_text(
+        "symbol,close\nAAPL,189.12\nMSFT,425.27\n",
+        encoding="utf-8",
+    )
+
+    ingest_response = client.post(
+        "/catalog/ingest",
+        json={
+            "name": "queryable_prices",
+            "path": str(csv_path),
+            "description": "Queryable CSV dataset",
+        },
+    )
+    assert ingest_response.status_code == 200
+
+    query_response = client.post(
+        "/query/execute",
+        json={"sql": "SELECT symbol, close FROM queryable_prices ORDER BY symbol"},
+    )
+    assert query_response.status_code == 200
+
+    payload = query_response.json()
+    assert payload["columns"] == ["symbol", "close"]
+    assert payload["row_count"] == 2
+    assert payload["rows"] == [
+        {"symbol": "AAPL", "close": 189.12},
+        {"symbol": "MSFT", "close": 425.27},
+    ]
+
+
+def test_ingest_rejects_missing_file_path(
+    client: TestClient, tmp_path: Path
+) -> None:
+    missing_path = tmp_path / "missing.csv"
+
+    response = client.post(
+        "/catalog/ingest",
+        json={
+            "name": "missing_prices",
+            "path": str(missing_path),
+            "description": "Missing file",
+        },
+    )
+
+    assert response.status_code == 400
+    data = response.json()
+    assert data["error"]["type"] == "ValidationError"
+
+
+def test_ingest_rejects_malformed_csv(client: TestClient, tmp_path: Path) -> None:
+    csv_path = tmp_path / "bad.csv"
+    csv_path.write_bytes(b"\x00\x01\x02not-a-real-csv")
+
+    response = client.post(
+        "/catalog/ingest",
+        json={
+            "name": "bad_csv",
+            "path": str(csv_path),
+            "description": "Bad CSV",
+        },
+    )
+
+    assert response.status_code == 400
+    data = response.json()
+    assert data["error"]["type"] == "ValidationError"
+
+
+def test_ingest_rejects_invalid_parquet(client: TestClient, tmp_path: Path) -> None:
+    parquet_path = tmp_path / "bad.parquet"
+    parquet_path.write_text("not a parquet file", encoding="utf-8")
+
+    response = client.post(
+        "/catalog/ingest",
+        json={
+            "name": "bad_parquet",
+            "path": str(parquet_path),
+            "description": "Bad parquet",
+        },
+    )
+
+    assert response.status_code == 400
+    data = response.json()
+    assert data["error"]["type"] == "ValidationError"

@@ -16,6 +16,8 @@ class UnsupportedDatasetFormatError(Exception):
 class DatasetAlreadyExistsError(Exception):
     pass
 
+class DatasetLoadError(Exception):
+    pass
 
 class DatasetIngestionService:
     def __init__(self, dataset_registry: DatasetRegistry) -> None:
@@ -34,14 +36,19 @@ class DatasetIngestionService:
         file_path = Path(path)
         suffix = file_path.suffix.lower()
 
-        if suffix == ".csv":
-            table = pacsv.read_csv(file_path)
-        elif suffix == ".parquet":
-            table = pq.read_table(file_path)
-        else:
-            raise UnsupportedDatasetFormatError(
-                f"Unsupported dataset format '{suffix or '<none>'}'"
-            )
+        try:
+            if suffix == ".csv":
+                table = pacsv.read_csv(file_path)
+            elif suffix == ".parquet":
+                table = pq.read_table(file_path)
+            else:
+                raise UnsupportedDatasetFormatError(
+                    f"Unsupported dataset format '{suffix or '<none>'}'"
+                )
+        except UnsupportedDatasetFormatError:
+            raise
+        except Exception as exc:
+            raise DatasetLoadError(f"Failed to load dataset from '{file_path}'") from exc
 
         metadata = DatasetMetadata(
             description=description,
