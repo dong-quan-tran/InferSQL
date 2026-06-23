@@ -1,8 +1,6 @@
 # InferSQL Development
 
-
 ## Local setup
-
 
 ```bash
 python -m venv .venv
@@ -10,60 +8,45 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-
 ## Running tests
-
 
 ```bash
 python -m pytest
 ```
 
-
 All broad-SQL work should land with tests. The full suite includes:
-
 
 - unit tests for parser, planner, validator, and runner,
 - API tests for `/query/validate`, `/query/plan`, `/query/execute`,
 - smoke tests for copilot and catalog integration.
 
-
 ## Migration status
 
-
-InferSQL has migrated from a custom narrow SQL path to a hybrid architecture centered on Apache DataFusion [web:65][web:317].
-
+InferSQL has migrated from a custom narrow SQL path to a hybrid architecture centered on Apache DataFusion.[web:65][web:317]
 
 Current state:
 
-
-- `/query/execute` is DataFusion-backed for production query execution across the supported SQL surface [web:65][web:321].
+- `/query/execute` is DataFusion-backed for production query execution across the supported SQL surface.[web:65][web:321]
 - `/query/plan` is hybrid:
   - simple single-table queries may still use the legacy custom planner,
-  - broader SQL shapes such as joins, subqueries, and set operations are planned through DataFusion [web:65][web:317].
+  - broader SQL shapes such as joins, subqueries, and set operations are planned through DataFusion.[web:65][web:317]
 - `/query/validate` remains product-owned:
   - it uses SQLGlot plus registry metadata for schema checks and guardrails,
-  - it is not the final source of semantic SQL truth.
+  - it is not the final source of semantic SQL truth.[web:352][web:394]
 - The original custom engine remains as a narrow planning/reference layer; it is no longer the primary execution engine.
 
-
 Practical meaning:
-
 
 - broad SQL capability should be judged by tested `/query/execute` behavior and broad `/query/plan` behavior,
 - not by legacy single-table assumptions from the original planner.
 
-
 ## Current SQL surface (developer view)
 
-
-InferSQL currently supports a **broad but explicit analytical SQL subset** over registered datasets. DataFusion provides the underlying execution and planning engine [web:65][web:317][web:320]; InferSQL exposes the subset that is tested and integrated with product validation.
-
+InferSQL currently supports a **broad but explicit analytical SQL subset** over registered datasets.[web:65][web:317] DataFusion provides the underlying execution and planning engine; InferSQL exposes the subset that is tested and integrated with product validation.[web:320][web:321]
 
 This file is the ground truth for what is **actually supported and tested**.
 
-
 ### Supported (high-level)
-
 
 - `SELECT` queries only (no DML/DDL).
 - Single-table and multi-table queries over registered datasets.
@@ -79,7 +62,7 @@ This file is the ground truth for what is **actually supported and tested**.
 - Set operations:
   - `UNION`.
   - `UNION ALL`.
-  - Column-count and type compatibility enforced by the engine.
+  - Column-count and type compatibility enforced by the engine.[web:393][web:396]
 - Projection:
   - Plain column projection.
   - Projection aliases.
@@ -103,12 +86,9 @@ This file is the ground truth for what is **actually supported and tested**.
   - ambiguous/unqualified columns across multiple datasets,
   - unsupported or invalid semantics mapped to `UnsupportedQueryError`.
 
-
 ### Validation vs engine responsibilities
 
-
 Product-level validation (using SQLGlot and registry metadata) is responsible for:
-
 
 - Enforcing allowed statement types (`SELECT`).
 - Ensuring referenced datasets exist in the registry.
@@ -116,9 +96,7 @@ Product-level validation (using SQLGlot and registry metadata) is responsible fo
 - Detecting ambiguous unqualified columns across multiple datasets.
 - Enforcing a small number of product guardrails, including rejection of `SELECT *` with `GROUP BY`.
 
-
 DataFusion is responsible for:
-
 
 - Full semantic correctness of:
   - join semantics,
@@ -126,26 +104,20 @@ DataFusion is responsible for:
   - `HAVING`,
   - subqueries,
   - set operations,
-  - expression legality.
-- Query planning and execution correctness [web:65][web:320][web:321].
-
+  - expression legality.[web:393][web:396]
+- Query planning and execution correctness.[web:65][web:320][web:321]
 
 The rule of thumb:
-
 
 - `/query/validate` is a **precheck** focusing on schema and product guardrails.
 - `/query/execute` and broad `/query/plan` rely on DataFusion for deep SQL semantics.
 
-
 ### Current `/query/validate` behavior
-
 
 `POST /query/validate`:
 
-
 - Accepts a JSON body with `sql` and optional options.
 - Returns:
-
 
   ```json
   {
@@ -165,35 +137,28 @@ The rule of thumb:
       "total_ms": 1.23,
       "stage": "validate",
       "engine": null,
-      "error_origin": null
+      "error_origin": null,
+      "features": []
     }
   }
   ```
 
-
 - `is_valid` reflects product-level validation only. A query can pass validate but still fail execute if engine-level semantics are violated.
-
 
 ### Current `/query/plan` behavior
 
-
 `POST /query/plan`:
 
-
 - For simple single-table queries:
-
 
   - Uses the legacy custom planner.
   - Returns `engine: "infersql-planner"`.
   - Returns custom `logical_plan` and `physical_plan` nodes.
 
-
 - For broader SQL (joins, subqueries, unions):
 
-
-  - Delegates to DataFusion planning and explain output to obtain logical and physical plans [web:317][web:320].
+  - Delegates to DataFusion planning and explain output to obtain logical and physical plans.[web:317][web:320]
   - Wraps those plans into:
-
 
     ```json
     "logical_plan": {
@@ -208,12 +173,9 @@ The rule of thumb:
     }
     ```
 
-
   - Sets `engine: "datafusion"`.
 
-
 - In both cases, `plan` may include a `debug` object:
-
 
   ```json
   "debug": {
@@ -221,20 +183,17 @@ The rule of thumb:
     "total_ms": 2.34,
     "stage": "plan",
     "engine": "datafusion",
-    "error_origin": null
+    "error_origin": null,
+    "features": ["join", "set_op"]
   }
   ```
 
-
 ### Current `/query/execute` behavior
-
 
 `POST /query/execute`:
 
-
-- Applies the same product-level schema and guardrail validation used by `/query/validate`, then executes via DataFusion [web:65][web:321].
+- Applies the same product-level schema and guardrail validation used by `/query/validate`, then executes via DataFusion.[web:65][web:321]
 - Returns:
-
 
   ```json
   {
@@ -253,20 +212,17 @@ The rule of thumb:
       "total_ms": 3.21,
       "stage": "execute",
       "engine": "datafusion",
-      "error_origin": null
+      "error_origin": null,
+      "features": ["join", "window"]
     }
   }
   ```
 
-
 - Logical and physical plans are included only where they are available and meaningful.
-
 
 ### Error responses
 
-
 Errors are normalized into a structured shape:
-
 
 ```json
 {
@@ -279,15 +235,14 @@ Errors are normalized into a structured shape:
     "debug": {
       "stage": "execute",
       "engine": "datafusion",
-      "error_origin": "engine_execution"
+      "error_origin": "engine_execution",
+      "features": []
     }
   }
 }
 ```
 
-
 The mapping is:
-
 
 - parse or syntax issues → `InvalidQuerySyntaxError` (400).
 - unknown table or dataset → `UnknownDatasetError` (typically 404).
@@ -295,34 +250,27 @@ The mapping is:
 - unsupported semantics or ambiguous references → `UnsupportedQueryError` (currently treated as a client error where normalized).
 - unexpected internal engine failures → 5xx internal error responses.
 
-
 ### What is explicitly not supported (yet)
-
 
 The following are **not** supported today and should be rejected or documented as such:
 
-
 - Non-`SELECT` statements:
   - `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `DROP`, etc.
-- Window functions unless and until they are explicitly tested and documented.
+- Window functions unless and until they are explicitly tested and documented here.
 - `ORDER BY` on select-list aliases in the product layer:
   - for example, `SELECT close + 1 AS x FROM prices ORDER BY x` may currently be rejected as an unknown column.
 - SQL features that are not yet explicitly tested and documented.
 - Advanced engine features like:
   - cost-based optimization,
   - user-defined functions (unless explicitly wired),
-  - advanced statistics-based planning.
-
+  - advanced statistics-based planning.[web:396][web:337]
 
 If you are unsure whether a feature is supported:
-
 
 - Search for a test in `tests/test_query_execute.py` or `tests/test_query_plan.py`.
 - If no test exists, treat the feature as unsupported until one is added.
 
-
 ## Developer guidelines
-
 
 - **Add tests first** for any new SQL surface you intend to support.
 - **Update this file** whenever you expand or restrict the supported SQL subset.

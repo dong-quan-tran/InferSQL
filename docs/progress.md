@@ -602,3 +602,51 @@ Broad-join planning tests that assert DataFusion usage for complex queries.
 Subquery-in-FROM planning and execution tests.
 
 New tests asserting normalized error responses and debug metadata.
+
+
+# Progress – 2026-06-22
+
+## Backend & engine integration
+
+- Centralized query analysis in `QueryService._analyze_query`, so `/query/validate`, `/query/plan`, and `/query/execute` share normalization, parsing, and schema validation.
+- Adjusted `/query/plan` routing so simple single-table queries use the custom planner and broad SQL (joins/subqueries/set ops) delegates planning to DataFusion.
+- Fixed schema validation for subqueries in `FROM` by:
+  - treating derived-table aliases (`FROM (...) AS q`) as their own scope,
+  - avoiding false `UnknownColumnError` when referencing `q.symbol` in the outer query.
+- Ensured `QueryService.execute` uses the shared analysis path without regressing tests.
+
+## DataFusion runner
+
+- Refactored `DataFusionRunner` to use a shared `_collect_table` execution helper reused by:
+  - `run_table`,
+  - `explain`,
+  - `run`.
+- Restored the original record-batch registration shape with DataFusion (`ctx.register_record_batches(table_name, [table.to_batches()])`) to keep all broad SQL tests green.[web:405][web:337]
+
+## Debug metadata & observability
+
+- Extended debug payloads for validate/plan/execute to include a `features` array derived from parsed SQL, indicating presence of:
+  - joins (`"join"`),
+  - set operations (`"set_op"`),
+  - window functions (`"window"`),
+  - top-level derived `FROM` (`"derived_from"`).
+
+## Documentation
+
+- Updated `development.md` to:
+  - explicitly describe the hybrid architecture and DataFusion’s role,
+  - document the current tested SQL surface and boundaries,
+  - clarify validation vs engine responsibilities,
+  - call out known limitations (e.g., non-SELECT statements, window functions as “not yet” until fully documented).
+- Updated `todo.md`:
+  - marked Phase 1 (Architecture & Contracts) as done,
+  - captured today’s work under Phases 8, 10, 11, and 13,
+  - kept remaining items focused on window-function decision, copilot, observability, and docs.
+
+## Test status
+
+- Full backend test suite passes:
+  - `tests/test_query_execute.py`
+  - `tests/test_query_plan.py`
+  - `tests/test_query_validate.py`
+  - and remaining unit + smoke tests.

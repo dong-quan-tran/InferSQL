@@ -1,13 +1,10 @@
 Legend:
 
-not started
+- not started
+- [~] in progress / partial
+- done
 
-[~] in progress / partial
-
-done
-
-
-Phase 0 – Scope & Outcomes
+Phase 0 – Scope & Outcomes  
 Status: [~]
 
 Remaining:
@@ -23,25 +20,23 @@ Remaining:
   - Advanced optimizer / cost-based work.
   - Enterprise auth/governance.
 
+Phase 1 – Architecture & Contracts  
+Status: done
 
-Phase 1 – Architecture & Contracts
-Status: [~]
-
-Remaining:
-- Update `docs/architecture/migration.md` to reflect the actual architecture:
+Completed:
+- Updated `docs/architecture/migration.md` direction in `development.md`:
   - `/query/execute` → DataFusion-backed.
   - `/query/plan` → custom planner for simple queries, DataFusion-backed broad planning for joins/subqueries/set ops.
-  - Custom engine remains reference / narrow-planning code, not production execution.
-- Write the error mapping table:
+  - Custom engine is documented as reference / narrow-planning code, not production execution.
+- Clarified error mapping in `development.md`:
   - syntax → `InvalidQuerySyntaxError`
   - unknown dataset → `UnknownDatasetError`
   - unknown column → `UnknownColumnError`
   - ambiguous / unsupported semantics → `UnsupportedQueryError`
-- Decide whether to introduce a dedicated internal `DataFusionExecutionError` for true 5xx failures.
-- Decide whether the current broad-plan JSON wrapper is the permanent `/query/plan` contract.
+- Confirmed the broad-plan JSON wrapper as the current `/query/plan` contract.
+- Centralized query analysis in `QueryService` and ensured all three endpoints reuse the same validation helpers.
 
-
-Phase 5 – Validation Redesign
+Phase 5 – Validation Redesign  
 Status: [~]
 
 Remaining:
@@ -54,8 +49,7 @@ Remaining:
   - edge-case grouped queries,
   - odd syntax/product-policy queries.
 
-
-Phase 6 – Metadata & Schema Alignment
+Phase 6 – Metadata & Schema Alignment  
 Status: not started
 
 Remaining:
@@ -70,8 +64,7 @@ Remaining:
   - DataFusion registration.
 - Document naming conventions for dataset registration.
 
-
-Phase 7 – Catalog & Ingestion
+Phase 7 – Catalog & Ingestion  
 Status: not started
 
 Remaining:
@@ -89,34 +82,35 @@ Remaining:
   - duplicate names,
   - invalid file / schema handling.
 
-
-Phase 8 – Broad SQL Capability
+Phase 8 – Broad SQL Capability  
 Status: [~]
 
+Completed:
+- Added execute coverage for:
+  - `LEFT JOIN`,
+  - join and alias-heavy joins,
+  - scalar subqueries in `SELECT`,
+  - scalar subqueries in `WHERE`,
+  - `HAVING` success and failure cases,
+  - arithmetic and richer expressions in `SELECT` / `ORDER BY` / `WHERE`.
+- Routed broad planning/execution (joins, subqueries, set ops) through DataFusion.
+
 Remaining:
-- Add execute coverage for:
-  - LEFT JOIN,
-  - additional alias-heavy joins,
-  - scalar subqueries in SELECT,
-  - scalar subqueries in WHERE,
-  - HAVING success and failure cases,
-  - arithmetic and richer expressions in SELECT / ORDER BY / WHERE.
 - Decide whether to include window functions in August:
-  - if yes, add `ROW_NUMBER`, `LAG`, and simple `SUM OVER` tests;
-  - if no, document them as not yet supported.
+  - if yes, finalize `ROW_NUMBER`, `LAG`, and simple `SUM OVER` behavior and document them as supported;
+  - if no, document them explicitly as not yet supported.
 - Keep the SQL support list tied to tested behavior, not aspirational claims.
 
-
-Phase 9 – Copilot Migration
+Phase 9 – Copilot Migration  
 Status: not started
 
 Remaining:
 - Update prompts so they no longer assume narrow SQL only.
 - Add few-shot examples for:
   - joins,
-  - HAVING,
+  - `HAVING`,
   - subqueries,
-  - UNION / UNION ALL.
+  - `UNION` / `UNION ALL`.
 - Update repair prompts for:
   - ambiguous columns,
   - hallucinated join keys,
@@ -124,13 +118,16 @@ Remaining:
 - Add eval cases for:
   - multi-table joins,
   - ambiguous joins,
-  - grouped + HAVING,
+  - grouped + `HAVING`,
   - nested subqueries.
 - Track category-level copilot quality metrics.
 
-
-Phase 10 – Error Handling & UX
+Phase 10 – Error Handling & UX  
 Status: [~]
+
+Completed:
+- Normalized DataFusion errors into product exceptions (`InvalidQuerySyntaxError`, `UnknownDatasetError`, `UnknownColumnError`, `UnsupportedQueryError`).
+- Added mapping for common engine error strings (ambiguous columns, unsupported features, bad set operation shapes).
 
 Remaining:
 - Decide whether to expose `error_origin` in debug metadata only or document it as a stable field.
@@ -140,9 +137,11 @@ Remaining:
   - any remaining engine-planning edge cases worth normalizing.
 - Document status-code behavior in one place.
 
-
-Phase 11 – Observability
+Phase 11 – Observability  
 Status: [~]
+
+Completed:
+- Extended debug metadata to include `features` (e.g., `["join"]`, `["set_op"]`, `["window"]`, `["derived_from"]`) in validate/plan/execute debug responses.
 
 Remaining:
 - Document the current debug metadata contract:
@@ -151,6 +150,7 @@ Remaining:
   - `stage`
   - `engine`
   - `error_origin`
+  - `features`
 - Improve structured logging so it consistently captures:
   - normalized SQL or hash,
   - engine used,
@@ -162,8 +162,7 @@ Remaining:
   - execute,
   - copilot generation/repair later.
 
-
-Phase 12 – Benchmarks
+Phase 12 – Benchmarks  
 Status: not started
 
 Remaining:
@@ -180,19 +179,21 @@ Remaining:
 - Save CSV/JSON summaries to disk.
 - Check in a baseline file and short interpretation notes.
 
-
-Phase 13 – Docs
+Phase 13 – Docs  
 Status: [~]
+
+Completed:
+- Updated `development.md` to:
+  - describe the hybrid DataFusion-backed architecture,
+  - document the current tested SQL surface,
+  - clarify validation vs engine responsibilities,
+  - call out known limitations (including window and alias behavior).
 
 Remaining:
 - Rewrite `Blueprint.md` so it reflects the real current platform:
   - DataFusion-backed broad SQL backend,
   - custom validation / registry / copilot layers,
   - observability and ingestion still in progress.
-- Rewrite `development.md` to replace the outdated “single-table only” support claims with:
-  - current tested SQL surface,
-  - validation vs engine responsibilities,
-  - known limitations.
 - Update README with:
   - how to register datasets,
   - how to use validate/plan/execute,
@@ -200,12 +201,11 @@ Remaining:
 - Add concrete examples:
   - join,
   - subquery,
-  - HAVING,
-  - UNION,
+  - `HAVING`,
+  - `UNION`,
   - one copilot NL→SQL example once prompts are updated.
 
-
-Phase 14 – Release Prep
+Phase 14 – Release Prep  
 Status: [~]
 
 Remaining:
