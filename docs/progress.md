@@ -650,3 +650,26 @@ New tests asserting normalized error responses and debug metadata.
   - `tests/test_query_plan.py`
   - `tests/test_query_validate.py`
   - and remaining unit + smoke tests.
+
+### 2026-06-23 – Phase 9 copilot/eval work
+
+- Fixed copilot eval harness to robustly extract the original question from prompts and fail clearly when the marker is missing.
+- Reworked `EvalQueryService` to model current product behavior instead of the old narrow-SQL world, including:
+  - explicit handling of unknown datasets (`trades`, `fundamentals`),
+  - unknown column checks for `ticker`, `price`, `sector`,
+  - basic support for joins and grouped aggregates in the fake validator and executor.
+- Refactored `test_copilot_eval.py` to:
+  - share a single `_assert_eval_case` helper between the parametrized test and the summary test,
+  - add an eval-suite summary with category-level pass-rate thresholds (including a new `aggregate` category).
+- Made Gemini and OpenAI providers truly optional:
+  - moved SDK imports into provider `__init__` with clear error messages if the packages are missing,
+  - hardened JSON parsing and error reporting for all providers (Gemini, OpenAI, Ollama),
+  - updated the LLM factory to lazy-import optional providers and always provide an Ollama fallback.
+- Added a live copilot eval runner script (Ollama-only) that:
+  - loads `copilot_eval_cases.json`,
+  - runs `CopilotService` with a simple Arrow-backed `prices` registry,
+  - evaluates each case using the same assertions as the unit tests,
+  - prints a JSON summary plus failure details,
+  - enforces configurable overall and per-category pass-rate thresholds.
+- Extended the copilot eval suite to cover aggregate + `HAVING` behavior under a dedicated `aggregate` category.
+- Confirmed all tests are green (`python -m pytest`) after the Phase 9 changes.

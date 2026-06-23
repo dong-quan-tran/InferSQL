@@ -1,5 +1,6 @@
 # InferSQL Development
 
+
 ## Local setup
 
 ```bash
@@ -18,6 +19,7 @@ All broad-SQL work should land with tests. The full suite includes:
 
 - unit tests for parser, planner, validator, and runner,
 - API tests for `/query/validate`, `/query/plan`, `/query/execute`,
+- API tests for catalog and ingestion,
 - smoke tests for copilot and catalog integration.
 
 ## Migration status
@@ -46,38 +48,121 @@ InferSQL currently supports a **broad but explicit analytical SQL subset** over 
 
 This file is the ground truth for what is **actually supported and tested**.
 
+## Registry and metadata
+
+InferSQL uses the dataset registry as the source of truth for dataset metadata.
+
+The registry owns:
+
+- dataset names,
+- Arrow-backed column names and column types,
+- optional dataset descriptions,
+- optional column descriptions,
+- source metadata such as `source_path` and `loaded_at`,
+- optional sample values exposed through catalog detail responses.
+
+Other layers derive schema information from the registry rather than maintaining separate schema definitions:
+
+- catalog endpoints serialize registry-backed metadata,
+- query validation checks datasets and columns against registry schemas,
+- query execution runs only against datasets that are registered.
+
+If a dataset is not present in the registry, it is not queryable.  
+If a column is not present in the registry schema for that dataset, it should be treated as unknown.
+
+### Dataset naming conventions
+
+Registered dataset names should follow these conventions:
+
+- lowercase only,
+- snake_case,
+- ASCII letters, digits, and underscores only,
+- stable names once exposed through the API.
+
+Recommended examples:
+
+- `prices`
+- `prices_nulls`
+- `fundamentals`
+- `daily_trades`
+
+Avoid:
+
+- spaces (`"stock prices"`),
+- hyphens (`"stock-prices"`),
+- mixed case (`"Prices"`),
+- environment-specific suffixes in public names unless they are part of the intended contract.
+
+Column names should also be lowercase snake_case where possible.
+
+## Catalog and ingestion
+
+InferSQL exposes a catalog and ingestion API backed by the dataset registry:
+
+- `/catalog/datasets` lists all registered datasets with:
+  - name, description, row count, source path, loaded timestamp,
+  - column names, types, and optional column descriptions.
+- `/catalog/datasets/{name}` returns a single dataset detail, including:
+  - the same metadata as the list endpoint,
+  - optional column samples and column aliases.
+- `/catalog/ingest` ingests a dataset from a local path:
+  - supports CSV (`.csv`) via `pyarrow.csv.read_csv`,
+  - supports Parquet (`.parquet`) via `pyarrow.parquet.read_table`,
+  - registers the resulting `pa.Table` in the registry with:
+    - schema,
+    - row count,
+    - `source_path`,
+    - `loaded_at`,
+    - optional dataset description.
+- `/catalog/upload` ingests a dataset from an uploaded file:
+  - supports CSV and Parquet uploads,
+  - writes the upload to a temporary file,
+  - then reuses the same ingestion path as `/catalog/ingest`.
+
+Ingestion rules:
+
+- duplicate dataset names:
+  - rejected by default with a `409 Conflict`,
+  - allowed when `overwrite=true`, in which case the dataset is replaced.
+- unsupported file formats:
+  - rejected as `400 ValidationError` with `UnsupportedDatasetFormatError`.
+- missing or unreadable files, malformed CSV, and invalid Parquet:
+  - rejected as `400 ValidationError` via a normalized `DatasetLoadError`.
+
+Newly ingested datasets are immediately queryable via `/query/execute` once they are registered in the registry.
+
 ### Supported (high-level)
 
 - `SELECT` queries only (no DML/DDL).
 - Single-table and multi-table queries over registered datasets.
 - Joins:
-  - `INNER JOIN`.
-  - `LEFT JOIN`.
-  - Additional join patterns where tests exist.
+  - `INNER JOIN`,
+  - `LEFT JOIN`,
+  - additional join patterns where tests exist.
 - Subqueries:
-  - `IN (subquery)`.
-  - Subqueries in `FROM` (derived tables).
-  - Scalar subqueries in `SELECT`.
-  - Scalar subqueries in `WHERE`.
+  - `IN (subquery)`,
+  - subqueries in `FROM` (derived tables),
+  - scalar subqueries in `SELECT`,
+  - scalar subqueries in `WHERE`.
 - Set operations:
-  - `UNION`.
-  - `UNION ALL`.
-  - Column-count and type compatibility enforced by the engine.[web:393][web:396]
+  - `UNION`,
+  - `UNION ALL`,
+  - column-count and type compatibility enforced by the engine.[web:393][web:396]
 - Projection:
-  - Plain column projection.
-  - Projection aliases.
-  - Arithmetic and other tested expressions in `SELECT`.
+  - plain column projection,
+  - projection aliases,
+  - arithmetic and other tested expressions in `SELECT`.
 - `WHERE` filters:
-  - Column-vs-literal comparisons (e.g., `=`, `!=`, `<`, `<=`, `>`, `>=`).
-  - Tested expressions in `WHERE`.
+  - column-vs-literal comparisons (e.g., `=`, `!=`, `<`, `<=`, `>`, `>=`),
+  - tested expressions in `WHERE`.
 - `ORDER BY`:
-  - On projected or queryable columns.
-  - On raw expressions where tested.
+  - on projected or queryable columns,
+  - on raw expressions where tested,
   - `ASC` and `DESC`.
 - `LIMIT` (with offset).
 - Aggregates:
-  - Basic aggregates such as `COUNT`, `SUM`, `AVG`.
-  - Grouped aggregation.
+  - basic aggregates such as `COUNT`, `SUM`, `AVG`,
+  - grouped aggregation,
   - `HAVING` over tested grouped queries.
 - Basic support for **normalized error behavior**:
   - syntax errors,
@@ -90,22 +175,22 @@ This file is the ground truth for what is **actually supported and tested**.
 
 Product-level validation (using SQLGlot and registry metadata) is responsible for:
 
-- Enforcing allowed statement types (`SELECT`).
-- Ensuring referenced datasets exist in the registry.
-- Ensuring referenced columns exist on those datasets.
-- Detecting ambiguous unqualified columns across multiple datasets.
-- Enforcing a small number of product guardrails, including rejection of `SELECT *` with `GROUP BY` for single-table queries.
+- enforcing allowed statement types (`SELECT`),
+- ensuring referenced datasets exist in the registry,
+- ensuring referenced columns exist on those datasets,
+- detecting ambiguous unqualified columns across multiple datasets,
+- enforcing a small number of product guardrails, including rejection of `SELECT *` with `GROUP BY` for single-table queries.
 
 DataFusion is responsible for:
 
-- Full semantic correctness of:
+- full semantic correctness of:
   - join semantics,
   - grouped aggregates,
   - `HAVING`,
   - subqueries,
   - set operations,
-  - expression legality.[web:393][web:396]
-- Query planning and execution correctness.[web:65][web:320][web:321]
+  - expression legality,[web:393][web:396]
+- query planning and execution correctness.[web:65][web:320][web:321]
 
 The rule of thumb:
 
@@ -155,14 +240,14 @@ The rule of thumb:
 
 - For simple single-table queries:
 
-  - Uses the legacy custom planner.
-  - Returns `engine: "infersql-planner"`.
-  - Returns custom `logical_plan` and `physical_plan` nodes.
+  - uses the legacy custom planner,
+  - returns `engine: "infersql-planner"`,
+  - returns custom `logical_plan` and `physical_plan` nodes.
 
 - For broader SQL (joins, subqueries, unions):
 
-  - Delegates to DataFusion planning and explain output to obtain logical and physical plans.[web:317][web:320]
-  - Wraps those plans into:
+  - delegates to DataFusion planning and explain output to obtain logical and physical plans,[web:317][web:320]
+  - wraps those plans into:
 
     ```json
     "logical_plan": {
@@ -177,7 +262,7 @@ The rule of thumb:
     }
     ```
 
-  - Sets `engine: "datafusion"`.
+  - sets `engine: "datafusion"`.
 
 - In both cases, `plan` may include a `debug` object:
 
@@ -206,8 +291,8 @@ The rule of thumb:
     "row_count": 10,
     "columns": ["symbol", "close"],
     "rows": [
-      ["AAPL", 189.12],
-      ["MSFT", 425.27]
+      { "symbol": "AAPL", "close": 189.12 },
+      { "symbol": "MSFT", "close": 425.27 }
     ],
     "logical_plan": { ... } or null,
     "physical_plan": { ... } or null,
@@ -271,10 +356,10 @@ Errors are normalized into a structured shape:
 
 The mapping is:
 
-- parse or syntax issues → `InvalidQuerySyntaxError` (400).
-- unknown table or dataset → `UnknownDatasetError` (typically 404).
-- unknown column → `UnknownColumnError` (400).
-- unsupported semantics or ambiguous references → `UnsupportedQueryError` (currently treated as a client error where normalized).
+- parse or syntax issues → `InvalidQuerySyntaxError` (400),
+- unknown table or dataset → `UnknownDatasetError` (typically 404),
+- unknown column → `UnknownColumnError` (400),
+- unsupported semantics or ambiguous references → `UnsupportedQueryError` (currently treated as a client error where normalized),
 - unexpected internal engine failures → 5xx internal error responses.
 
 ### What is explicitly not supported (yet)
@@ -294,16 +379,98 @@ The following are **not** supported today and should be rejected or documented a
 
 If you are unsure whether a feature is supported:
 
-- Search for a test in `tests/test_query_execute.py` or `tests/test_query_plan.py`.
-- If no test exists, treat the feature as unsupported until one is added.
+- search for a test in `tests/test_query_execute.py` or `tests/test_query_plan.py`,
+- if no test exists, treat the feature as unsupported until one is added.
 
 ## Developer guidelines
 
 - **Add tests first** for any new SQL surface you intend to support.
-- **Update this file** whenever you expand or restrict the supported SQL subset.
+- **Update this file** whenever you expand or restrict the supported SQL subset or change catalog/ingestion behavior.
 - Keep `/query/validate`, `/query/plan`, and `/query/execute` behavior in sync by reusing validation helpers.
 - Keep the documented SQL surface tied to tested behavior, not aspirational claims.
 - When in doubt, prefer:
   - precise errors,
-  - explicit non-support, and
+  - explicit non-support,
   - clear documentation over silent behavior changes.
+
+## Copilot and eval harness
+
+InferSQL includes a small, self-contained copilot layer that generates SQL candidates from natural language questions over the registered datasets. The copilot flow is fully test-backed and designed to support multiple LLM providers without hard-wiring to any specific API.
+
+### Copilot architecture (developer view)
+
+- `CopilotService` owns the high-level query flow:
+  - builds schema context from the dataset registry,
+  - calls an `LLMProvider` to generate a `CopilotSqlCandidate`,
+  - validates the candidate via the query service (`/query/validate` behavior),
+  - optionally executes the candidate via the query service (`/query/execute` behavior),
+  - returns a structured result with validation, execution (optional), and candidate metadata.
+- `LLMProvider` is the common interface for all LLM backends. Concrete implementations live in `app.services.llm.*`:
+  - `OllamaLLMProvider` is the default local provider and has no paid dependencies.
+  - `GeminiLLMProvider` and `OpenAILLMProvider` are optional:
+    - they use lazy imports (`google-genai`, `openai`) inside `__init__`,
+    - they are only required if you choose those providers and install the corresponding SDKs.
+- `build_llm_provider` in `app.services.llm.factory` centralizes provider selection:
+  - reads a provider name (e.g. `ollama`, `gemini`, `openai`, `auto`),
+  - constructs the appropriate provider with configuration such as base URL, model name, and temperature,
+  - wraps primary providers in a `FallbackLLMProvider` so Ollama is always available as a fallback when configured.
+
+This provider abstraction means you can add or switch LLM backends without changing `CopilotService` or the rest of the API layer; only the factory configuration and dependencies need to change.
+
+### Copilot evals
+
+Copilot behavior is covered by a dedicated eval harness and two entry points:
+
+- `tests/test_copilot_eval.py`:
+  - uses `EvalLLMProvider`, a fake provider that returns deterministic `CopilotSqlCandidate` objects based on the original question,
+  - uses `EvalQueryService`, a fake query service that:
+    - normalizes SQL and inspects it for known patterns,
+    - simulates current product behavior for:
+      - valid single-table queries on the `prices` dataset,
+      - unknown datasets (`trades`, `fundamentals`),
+      - unknown columns (`ticker`, `price`, `sector`),
+      - joins, grouped aggregates, and `HAVING` where explicitly handled,
+    - returns a validation shape compatible with `/query/validate` and `/query/execute`.
+  - loads eval cases from `tests/fixtures/copilot_eval_cases.json`. Each case defines:
+    - an `id` and `category` (e.g. `simple_select`, `synonym`, `hallucination`, `unsupported_feature`, `ambiguous`, `aggregate`),
+    - a natural-language `question`,
+    - whether execution should be attempted (`execute`),
+    - expectations for validity, columns, row counts, SQL fragments, and error messages.
+  - includes:
+    - a parametrized test that asserts each case individually, and
+    - a suite summary test that builds category-level metrics and enforces minimum pass-rate thresholds.
+- `scripts/run_copilot_live_eval.py`:
+  - runs the same `CopilotService` flow against a real `LLMProvider` (typically Ollama in local development),
+  - uses a simple Arrow-backed `prices` table registered through `DatasetRegistry`,
+  - reuses the same eval cases and assertion logic as the unit tests,
+  - prints a JSON summary including:
+    - provider name and model,
+    - overall pass rate,
+    - per-category pass rates,
+    - details for failing cases (question, generated SQL, assumptions, validation errors),
+  - enforces configurable thresholds so you can fail a CI job or local check if regressions occur.
+
+The eval cases intentionally model a small but representative SQL surface:
+
+- simple single-table projections and filters,
+- synonym and schema-mismatch repair (e.g., `ticker` → `symbol`, `price` → `close`),
+- hallucinated datasets/columns and unsupported features,
+- aggregate queries with `COUNT`/`AVG` and `HAVING` on grouped results,
+- early coverage for joins and subqueries, currently focused on correct handling of unknown datasets and columns.
+
+As you broaden the SQL surface area that Copilot should reliably handle, add new eval cases first (and extend `EvalQueryService` where needed), then tune prompts or providers until the eval suite and live eval both pass at the desired thresholds.
+
+### Copilot evals only
+
+To run just the copilot eval tests:
+
+```bash
+python -m pytest tests/test_copilot_eval.py
+```
+
+To run the live copilot eval script (Ollama-only by default):
+
+```bash
+COPILOT_LLM_PROVIDER=ollama OLLAMA_MODEL=llama3.1 \
+python scripts/run_copilot_live_eval.py
+```

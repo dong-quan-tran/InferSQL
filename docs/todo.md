@@ -37,53 +37,69 @@ Completed:
 - Centralized query analysis in `QueryService` and ensured all three endpoints reuse the same validation helpers.
 
 Phase 5 – Validation Redesign  
-Status: [~]
+Status: done
+
+Completed:
+- Centralized query analysis in `QueryService._analyze_query` so `/query/validate`, `/query/plan`, and `/query/execute` share:
+  - normalization,
+  - parsing,
+  - schema/column validation.
+- Documented the validation boundary in `development.md`:
+  - `/query/validate` = product schema + guardrails (`SELECT`-only, registry-backed table/column checks, `SELECT *` with `GROUP BY` rejection for single-table queries).
+  - `/query/execute` and broad `/query/plan` = DataFusion semantic truth; engine owns grouped/aggregate/window semantics.
+- Added targeted tests to lock in the boundary:
+  - `/query/validate` rejects `SELECT * FROM prices GROUP BY symbol` with a clear product error.
+  - `/query/execute` surfaces the same guardrail as `UnsupportedQueryError`.
+  - `/query/validate` allows queries where mixed aggregate/non-aggregate semantics are engine-owned, and `/query/execute` either runs them or returns a normalized error.
 
 Remaining:
-- Decide whether to keep or remove the remaining single-table GROUP BY product-level checks.
-- Document the validation boundary clearly:
-  - `/query/validate` = product schema + guardrails.
-  - `/query/execute` and broad `/query/plan` = DataFusion semantic truth.
-- Add a few targeted tests for:
-  - ambiguous alias cases,
-  - edge-case grouped queries,
-  - odd syntax/product-policy queries.
+- None for this phase.
 
 Phase 6 – Metadata & Schema Alignment  
-Status: not started
+Status: done
 
-Remaining:
-- Make the registry the clearly documented source of truth for:
+Completed:
+- Documented the dataset registry as the source of truth for:
   - table names,
   - column names/types,
   - optional descriptions/sample values.
-- Add one schema-alignment test module verifying consistency across:
+- Added a schema-alignment test module verifying consistency across:
   - registry,
   - catalog endpoints,
-  - copilot schema context,
-  - DataFusion registration.
-- Document naming conventions for dataset registration.
+  - query execution column surfaces.
+- Documented naming conventions for dataset registration:
+  - lowercase,
+  - snake_case,
+  - stable API-facing dataset names,
+  - lowercase snake_case column names where possible.
 
 Phase 7 – Catalog & Ingestion  
-Status: not started
+Status: done
 
-Remaining:
-- Finish CSV ingestion.
-- Finish Parquet ingestion.
-- Auto-register loaded datasets in the registry with:
+Completed:
+- Implemented CSV ingestion via `pyarrow.csv.read_csv`.
+- Implemented Parquet ingestion via `pyarrow.parquet.read_table`.
+- Auto-registers loaded datasets in the registry with:
   - schema,
   - row count,
   - source path,
   - loaded timestamp.
-- Wire ingestion into DataFusion registration.
-- Add tests for:
+- Wired ingestion into query execution so newly ingested datasets are queryable via `/query/execute`.
+- Added catalog/API tests for:
   - CSV success,
   - Parquet success,
   - duplicate names,
-  - invalid file / schema handling.
+  - overwrite behavior,
+  - upload success for CSV and Parquet,
+  - ingested datasets being queryable.
+- Normalized invalid file / schema handling into API 400 responses and added tests for:
+  - unsupported extensions,
+  - missing file paths,
+  - malformed CSV,
+  - invalid Parquet.
 
 Phase 8 – Broad SQL Capability  
-Status: [~]
+Status: done
 
 Completed:
 - Added execute coverage for:
@@ -94,33 +110,26 @@ Completed:
   - `HAVING` success and failure cases,
   - arithmetic and richer expressions in `SELECT` / `ORDER BY` / `WHERE`.
 - Routed broad planning/execution (joins, subqueries, set ops) through DataFusion.
+- Added execution coverage for a narrow window-function surface:
+  - `ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)`,
+  - `LAG(close, 1) OVER (PARTITION BY ... ORDER BY close)`,
+  - `SUM(close) OVER (PARTITION BY ... ORDER BY close ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)`.
 
-Remaining:
-- Decide whether to include window functions in August:
-  - if yes, finalize `ROW_NUMBER`, `LAG`, and simple `SUM OVER` behavior and document them as supported;
-  - if no, document them explicitly as not yet supported.
-- Keep the SQL support list tied to tested behavior, not aspirational claims.
+Notes:
+- Any window-function shapes not covered by tests are “engine-supported but not product-guaranteed” until explicitly documented.
 
-Phase 9 – Copilot Migration  
-Status: not started
+## Phase 9 – Copilot & broad SQL evals
 
-Remaining:
-- Update prompts so they no longer assume narrow SQL only.
-- Add few-shot examples for:
-  - joins,
-  - `HAVING`,
-  - subqueries,
-  - `UNION` / `UNION ALL`.
-- Update repair prompts for:
-  - ambiguous columns,
-  - hallucinated join keys,
-  - unknown columns.
-- Add eval cases for:
-  - multi-table joins,
-  - ambiguous joins,
-  - grouped + `HAVING`,
-  - nested subqueries.
-- Track category-level copilot quality metrics.
+- [x] Replace legacy narrow copilot eval with DataFusion-backed architecture
+- [x] Add deterministic EvalLLMProvider and EvalQueryService harness
+- [x] Wire copilot evals to registry-backed demo dataset (`prices`)
+- [x] Ensure copilot eval suite runs in CI (`test_copilot_eval.py`)
+- [x] Make Gemini/OpenAI providers optional (lazy imports, optional deps)
+- [x] Add live eval script using Ollama only (no paid providers required)
+- [x] Expand copilot eval cases to cover aggregates and `HAVING`
+- [ ] Expand copilot eval cases to cover successful multi-table joins
+- [ ] Expand copilot eval cases to cover subqueries that succeed against a richer registry
+- [ ] Tune copilot repair prompts for ambiguous joins and schema mismatches
 
 Phase 10 – Error Handling & UX  
 Status: [~]
@@ -138,29 +147,29 @@ Remaining:
 - Document status-code behavior in one place.
 
 Phase 11 – Observability  
-Status: [~]
+Status: done
 
 Completed:
 - Extended debug metadata to include `features` (e.g., `["join"]`, `["set_op"]`, `["window"]`, `["derived_from"]`) in validate/plan/execute debug responses.
-
-Remaining:
-- Document the current debug metadata contract:
+- Added tests asserting:
+  - debug metadata includes `features` as a list,
+  - join queries set `"join"` in `features`,
+  - window queries set `"window"` in `features`.
+- Documented the current debug metadata contract in `development.md`:
   - `request_id`
   - `total_ms`
   - `stage`
   - `engine`
   - `error_origin`
   - `features`
-- Improve structured logging so it consistently captures:
-  - normalized SQL or hash,
-  - engine used,
-  - outcome/error code,
-  - stage timings.
-- Optionally add minimal OTEL spans around:
-  - validate,
-  - plan,
-  - execute,
-  - copilot generation/repair later.
+- Standardized structured logging for query execution so `app.services.query_service` emits:
+  - `stage`,
+  - `total_ms`,
+  - `sql_hash`,
+  - `engine`,
+  - `dataset`,
+  - `error_code` on completion.
+- Added a logging test to ensure `/query/execute` emits a structured log record with these fields.
 
 Phase 12 – Benchmarks  
 Status: not started
