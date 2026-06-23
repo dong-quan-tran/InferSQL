@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import json
 
-from google import genai
-from google.genai import types
-
 from app.schemas.copilot import CopilotSqlCandidate
 from app.services.llm.base import LLMProvider
 from app.services.llm.prompt_builder import build_system_prompt, build_user_prompt
@@ -17,7 +14,18 @@ class GeminiLLMProvider(LLMProvider):
         model: str,
         temperature: float = 0.0,
     ) -> None:
-        self.client = genai.Client(api_key=api_key)
+        try:
+            from google import genai
+            from google.genai import types
+        except ImportError as exc:
+            raise ImportError(
+                "Gemini support requires the optional 'google-genai' package. "
+                "Install it with: pip install google-genai"
+            ) from exc
+
+        self._genai = genai
+        self._types = types
+        self.client = self._genai.Client(api_key=api_key)
         self._model = model
         self.temperature = temperature
 
@@ -40,7 +48,7 @@ class GeminiLLMProvider(LLMProvider):
         response = self.client.models.generate_content(
             model=self._model,
             contents=user_prompt,
-            config=types.GenerateContentConfig(
+            config=self._types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 temperature=self.temperature,
                 response_mime_type="application/json",
@@ -48,5 +56,9 @@ class GeminiLLMProvider(LLMProvider):
         )
 
         text = response.text or ""
-        data = json.loads(text)
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Gemini returned non-JSON content: {text}") from exc
+
         return CopilotSqlCandidate.model_validate(data)

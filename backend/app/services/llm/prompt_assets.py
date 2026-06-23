@@ -89,6 +89,92 @@ FEW_SHOT_EXAMPLES: list[dict] = [
             "confidence": 0.83,
         },
     },
+    {
+        "question": "Show symbols and market cap by joining prices with fundamentals",
+        "response": {
+            "sql": (
+                "SELECT p.symbol, f.market_cap "
+                "FROM prices AS p "
+                "JOIN fundamentals AS f ON p.symbol = f.symbol"
+            ),
+            "assumptions": ["Used symbol as the join key because it exists in both datasets."],
+            "referenced_tables": ["prices", "fundamentals"],
+            "referenced_columns": ["symbol", "market_cap"],
+            "confidence": 0.88,
+        },
+    },
+    {
+        "question": "List all price symbols and include market cap if available",
+        "response": {
+            "sql": (
+                "SELECT p.symbol, p.close, f.market_cap "
+                "FROM prices AS p "
+                "LEFT JOIN fundamentals AS f ON p.symbol = f.symbol"
+            ),
+            "assumptions": ["Used LEFT JOIN so symbols from prices remain even when fundamentals are missing."],
+            "referenced_tables": ["prices", "fundamentals"],
+            "referenced_columns": ["symbol", "close", "market_cap"],
+            "confidence": 0.89,
+        },
+    },
+    {
+        "question": "Show symbols with more than 10 rows and average close above 100",
+        "response": {
+            "sql": (
+                "SELECT symbol, COUNT(*) AS row_count, AVG(close) AS avg_close "
+                "FROM prices "
+                "GROUP BY symbol "
+                "HAVING COUNT(*) > 10 AND AVG(close) > 100"
+            ),
+            "assumptions": [],
+            "referenced_tables": ["prices"],
+            "referenced_columns": ["symbol", "close"],
+            "confidence": 0.9,
+        },
+    },
+    {
+        "question": "Show rows for symbols that exist in fundamentals",
+        "response": {
+            "sql": (
+                "SELECT symbol, close "
+                "FROM prices "
+                "WHERE symbol IN (SELECT symbol FROM fundamentals)"
+            ),
+            "assumptions": [],
+            "referenced_tables": ["prices", "fundamentals"],
+            "referenced_columns": ["symbol", "close"],
+            "confidence": 0.88,
+        },
+    },
+    {
+        "question": "For each symbol, show its average close and the overall average close",
+        "response": {
+            "sql": (
+                "SELECT symbol, AVG(close) AS symbol_avg_close, "
+                "(SELECT AVG(close) FROM prices) AS overall_avg_close "
+                "FROM prices "
+                "GROUP BY symbol"
+            ),
+            "assumptions": [],
+            "referenced_tables": ["prices"],
+            "referenced_columns": ["symbol", "close"],
+            "confidence": 0.87,
+        },
+    },
+    {
+        "question": "Combine prices and prices_nulls into one result with all rows",
+        "response": {
+            "sql": (
+                "SELECT symbol, close, ts FROM prices "
+                "UNION ALL "
+                "SELECT symbol, close, ts FROM prices_nulls"
+            ),
+            "assumptions": ["Used UNION ALL to preserve all rows from both datasets."],
+            "referenced_tables": ["prices", "prices_nulls"],
+            "referenced_columns": ["symbol", "close", "ts"],
+            "confidence": 0.86,
+        },
+    },
 ]
 
 

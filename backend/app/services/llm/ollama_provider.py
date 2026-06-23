@@ -61,5 +61,9 @@ class OllamaLLMProvider(LLMProvider):
 
         payload = response.json()
         content = payload["message"]["content"]
-        data = json.loads(content)
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Ollama returned non-JSON content: {content}") from exc
+
         return CopilotSqlCandidate.model_validate(data)

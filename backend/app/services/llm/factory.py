@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from app.services.llm.base import LLMProvider
 from app.services.llm.fallback_provider import FallbackLLMProvider
-from app.services.llm.gemini_provider import GeminiLLMProvider
 from app.services.llm.ollama_provider import OllamaLLMProvider
-from app.services.llm.openai_provider import OpenAILLMProvider
 
 
 def build_llm_provider(
@@ -32,6 +30,8 @@ def build_llm_provider(
     if normalized == "gemini":
         if not gemini_api_key:
             raise ValueError("gemini_api_key is required for provider='gemini'")
+        from app.services.llm.gemini_provider import GeminiLLMProvider
+
         return FallbackLLMProvider(
             primary=GeminiLLMProvider(
                 api_key=gemini_api_key,
@@ -43,6 +43,8 @@ def build_llm_provider(
     if normalized == "openai":
         if not openai_api_key:
             raise ValueError("openai_api_key is required for provider='openai'")
+        from app.services.llm.openai_provider import OpenAILLMProvider
+
         return FallbackLLMProvider(
             primary=OpenAILLMProvider(
                 api_key=openai_api_key,
@@ -53,6 +55,8 @@ def build_llm_provider(
 
     if normalized == "auto":
         if gemini_api_key:
+            from app.services.llm.gemini_provider import GeminiLLMProvider
+
             return FallbackLLMProvider(
                 primary=GeminiLLMProvider(
                     api_key=gemini_api_key,
@@ -61,6 +65,8 @@ def build_llm_provider(
                 fallback=ollama,
             )
         if openai_api_key:
+            from app.services.llm.openai_provider import OpenAILLMProvider
+
             return FallbackLLMProvider(
                 primary=OpenAILLMProvider(
                     api_key=openai_api_key,

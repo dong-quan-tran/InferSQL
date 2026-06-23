@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 
-from openai import OpenAI
-
 from app.schemas.copilot import CopilotSqlCandidate
 from app.services.llm.base import LLMProvider
 from app.services.llm.prompt_builder import build_system_prompt, build_user_prompt
@@ -16,6 +14,14 @@ class OpenAILLMProvider(LLMProvider):
         model: str,
         temperature: float = 0.0,
     ) -> None:
+        try:
+            from openai import OpenAI
+        except ImportError as exc:
+            raise ImportError(
+                "OpenAI support requires the optional 'openai' package. "
+                "Install it with: pip install openai"
+            ) from exc
+
         self.client = OpenAI(api_key=api_key)
         self._model = model
         self.temperature = temperature
@@ -47,5 +53,9 @@ class OpenAILLMProvider(LLMProvider):
         )
 
         content = response.choices[0].message.content or "{}"
-        data = json.loads(content)
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"OpenAI returned non-JSON content: {content}") from exc
+
         return CopilotSqlCandidate.model_validate(data)
