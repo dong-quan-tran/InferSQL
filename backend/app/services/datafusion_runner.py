@@ -22,7 +22,7 @@ class DataFusionRunner:
 
         return ctx
 
-    def run_table(self, sql: str) -> pa.Table:
+    def _collect_table(self, sql: str) -> pa.Table:
         ctx = self._build_context()
         dataframe = ctx.sql(sql)
         batches = dataframe.collect()
@@ -32,16 +32,16 @@ class DataFusionRunner:
 
         return pa.Table.from_batches(batches)
 
-    def explain(self, sql: str, verbose: bool = True) -> list[dict[str, Any]]:
-        ctx = self._build_context()
-        explain_sql = f"EXPLAIN {'VERBOSE ' if verbose else ''}{sql}"
-        dataframe = ctx.sql(explain_sql)
-        batches = dataframe.collect()
+    def run_table(self, sql: str) -> pa.Table:
+        return self._collect_table(sql)
 
-        if not batches:
+    def explain(self, sql: str, verbose: bool = True) -> list[dict[str, Any]]:
+        explain_sql = f"EXPLAIN {'VERBOSE ' if verbose else ''}{sql}"
+        table = self._collect_table(explain_sql)
+
+        if table.num_rows == 0:
             return []
 
-        table = pa.Table.from_batches(batches)
         return table.to_pylist()
 
     def run(
