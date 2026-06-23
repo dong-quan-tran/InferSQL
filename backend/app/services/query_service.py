@@ -52,6 +52,7 @@ class QueryService:
         stage: str,
         engine: str | None,
         error_origin: str | None = None,
+        features: list[str] | None = None,
     ) -> dict:
         return {
             "request_id": request_id or "unknown",
@@ -59,6 +60,7 @@ class QueryService:
             "stage": stage,
             "engine": engine,
             "error_origin": error_origin,
+            "features": features or [],
         }
 
     def _has_top_level_derived_from(self, expression: exp.Expression) -> bool:
@@ -158,6 +160,35 @@ class QueryService:
         )
 
     # -------------------------------------------------------------------------
+    # Feature detection helpers
+    # -------------------------------------------------------------------------
+
+    def _has_joins(self, expression: exp.Expression) -> bool:
+        return expression.find(exp.Join) is not None
+
+    def _has_set_ops(self, expression: exp.Expression) -> bool:
+        return (
+            expression.find(exp.Union) is not None
+            or expression.find(exp.Intersect) is not None
+            or expression.find(exp.Except) is not None
+        )
+
+    def _has_window_functions(self, expression: exp.Expression) -> bool:
+        return expression.find(exp.Window) is not None
+
+    def _compute_features(self, expression: exp.Expression) -> list[str]:
+        features: list[str] = []
+        if self._has_joins(expression):
+            features.append("join")
+        if self._has_set_ops(expression):
+            features.append("set_op")
+        if self._has_window_functions(expression):
+            features.append("window")
+        if self._has_top_level_derived_from(expression):
+            features.append("derived_from")
+        return features
+
+    # -------------------------------------------------------------------------
     # Shared analysis
     # -------------------------------------------------------------------------
 
@@ -225,7 +256,7 @@ class QueryService:
         )
 
         expression, summary = self._analyze_query(sql)
-        # expression is unused directly here but returned for symmetry with plan/execute.
+        features = self._compute_features(expression)
         del expression
 
         response = {
@@ -250,6 +281,7 @@ class QueryService:
                 total_ms=total_ms,
                 stage="validate",
                 engine=None,
+                features=features,
             )
 
         return response
@@ -268,6 +300,7 @@ class QueryService:
 
         expression = self.query_parser.parse(normalized_sql)
         self.query_parser.validate_select_only(expression)
+        features = self._compute_features(expression)
 
         # Broad SQL with a top-level derived table in FROM should bypass
         # product schema validation and be delegated directly to DataFusion.
@@ -290,6 +323,7 @@ class QueryService:
                     total_ms=total_ms,
                     stage="plan",
                     engine="datafusion",
+                    features=features,
                 )
 
             return response
@@ -342,6 +376,7 @@ class QueryService:
                     total_ms=total_ms,
                     stage="plan",
                     engine="infersql-planner",
+                    features=features,
                 )
 
             return response
@@ -366,6 +401,7 @@ class QueryService:
                 total_ms=total_ms,
                 stage="plan",
                 engine="datafusion",
+                features=features,
             )
 
         return response
@@ -441,11 +477,13 @@ class QueryService:
         total_ms = (time.perf_counter() - start_time) * 1000.0
 
         if debug:
+            features = self._compute_features(expression)
             response["debug"] = self._build_debug_info(
                 request_id=request_id,
                 total_ms=total_ms,
                 stage="execute",
                 engine="datafusion",
+                features=features,
             )
 
         return response
