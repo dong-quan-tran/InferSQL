@@ -633,3 +633,76 @@ def test_query_execute_debug_metadata_includes_timings_and_engine(client: TestCl
     assert debug["stage"] == "execute"
     assert debug["engine"] == "datafusion"
     assert isinstance(debug["total_ms"], (int, float))
+
+
+def test_query_execute_scalar_subquery_in_select(client: TestClient) -> None:
+    # Expect the same global max(close) value repeated for each row.
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT
+                  symbol,
+                  close,
+                  (SELECT MAX(close) FROM prices) AS max_close
+                FROM prices
+                ORDER BY symbol
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["columns"] == ["symbol", "close", "max_close"]
+    assert payload["row_count"] == 5
+    rows = payload["rows"]
+
+    # Symbols are sorted alphabetically.
+    assert [row["symbol"] for row in rows] == ["AAPL", "AMZN", "GOOGL", "MSFT", "NVDA"]
+
+    # max_close should be the same for every row, and equal to the max of close.
+    max_close_values = {row["max_close"] for row in rows}
+    assert len(max_close_values) == 1
+    (max_close,) = max_close_values
+
+    closes = [row["close"] for row in rows]
+    assert max_close == max(closes)
+
+
+def test_query_execute_scalar_subquery_in_where(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT symbol, close
+                FROM prices
+                WHERE close > (
+                  SELECT AVG(close) FROM prices
+                )
+                ORDER BY symbol
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["columns"] == ["symbol", "close"]
+    rows = payload["rows"]
+    symbols = [row["symbol"] for row in rows]
+    closes = [row["close"] for row in rows]
+
+    # Manually compute the average to assert correctness.
+    response_all = client.post(
+        "/query/execute",
+        json={"sql": "SELECT symbol, close FROM prices"},
+    )
+    assert response_all.status_code == 200
+    all_closes = [row["close"] for row in response_all.json()["rows"]]
+    avg_close = sum(all_closes) / len(all_closes)
+
+    assert all(close > avg_close for close in closes)
+
+    # With the seeded demo data, only NVDA is above the global average close.
+    assert symbols == ["NVDA"]
