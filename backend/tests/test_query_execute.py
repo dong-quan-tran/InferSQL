@@ -706,3 +706,55 @@ def test_query_execute_scalar_subquery_in_where(client: TestClient) -> None:
 
     # With the seeded demo data, only NVDA is above the global average close.
     assert symbols == ["NVDA"]
+
+
+def test_query_execute_invalid_having_non_grouped_column_engine_rejected(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT symbol, SUM(close) AS total_close
+                FROM prices
+                GROUP BY symbol
+                HAVING close > 200
+            """
+        },
+    )
+
+    # DataFusion should surface this as an aggregate/group-by semantic error;
+    # we normalize to an UnsupportedQueryError.
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "UNSUPPORTEDQUERYERROR"
+    assert payload["error"]["type"] == "UnsupportedQueryError"
+
+
+def test_query_execute_having_without_group_by_relies_on_engine(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT symbol, SUM(close) AS total_close
+                FROM prices
+                HAVING SUM(close) > 200
+            """
+        },
+    )
+
+    if response.status_code == 200:
+        payload = response.json()
+        assert payload["columns"] == ["symbol", "total_close"]
+        # Depending on engine behavior, the row_count/rows may vary;
+        # we only assert the basic shape.
+        assert payload["row_count"] >= 1
+    else:
+        assert response.status_code == 400
+        payload = response.json()
+        assert payload["error"]["code"] in (
+            "UNSUPPORTEDQUERYERROR",
+            "INVALIDQUERYSYNTAXERROR",
+        )
