@@ -758,3 +758,97 @@ def test_query_execute_having_without_group_by_relies_on_engine(
             "UNSUPPORTEDQUERYERROR",
             "INVALIDQUERYSYNTAXERROR",
         )
+
+
+def test_query_execute_arithmetic_expression_in_select(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT symbol, close, close + 1 AS close_plus
+                FROM prices
+                ORDER BY symbol
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["columns"] == ["symbol", "close", "close_plus"]
+    rows = payload["rows"]
+    assert len(rows) == 5
+
+    # Verify arithmetic expression is evaluated correctly per row.
+    for row in rows:
+        assert isinstance(row["close"], (int, float))
+        assert isinstance(row["close_plus"], (int, float))
+        assert row["close_plus"] == row["close"] + 1
+
+
+def test_query_execute_order_by_select_alias_is_currently_rejected(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT symbol, close, close + 1 AS close_plus
+                FROM prices
+                ORDER BY close_plus DESC
+            """
+        },
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "UNKNOWNCOLUMNERROR"
+    assert "Unknown column 'close_plus'" in payload["error"]["message"]
+
+
+def test_query_execute_orders_by_raw_expression(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT symbol, close
+                FROM prices
+                ORDER BY close * 2 DESC
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["columns"] == ["symbol", "close"]
+    rows = payload["rows"]
+
+    closes = [row["close"] for row in rows]
+    # Ordering by close * 2 should be equivalent to ordering by close.
+    assert closes == sorted(closes, reverse=True)
+
+
+def test_query_execute_expression_in_where(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute",
+        json={
+            "sql": """
+                SELECT symbol, close
+                FROM prices
+                WHERE close + 10 > 200
+                ORDER BY symbol
+            """
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["columns"] == ["symbol", "close"]
+    rows = payload["rows"]
+    symbols = [row["symbol"] for row in rows]
+    closes = [row["close"] for row in rows]
+
+    # WHERE clause should be enforced based on the expression.
+    assert all(close + 10 > 200 for close in closes)
+    # With seeded data, that means close > 190; only MSFT and NVDA qualify.
+    assert symbols == ["MSFT", "NVDA"]
