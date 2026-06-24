@@ -147,10 +147,16 @@
         "category": "unsupported_feature",
         "question": "Join prices with fundamentals",
         "execute": false,
-        "expected_valid": false,
-        "expected_error_any_of": [
-            "Unknown dataset",
-            "Only single-table queries are supported right now"
+        "expected_valid": true,
+        "expected_sql_contains": [
+            "SELECT",
+            "FROM fundamentals"
+        ],
+        "expected_columns": [
+            "close"
+        ],
+        "expected_assumptions_contains": [
+            "Assumed a fundamentals dataset exists."
         ],
         "max_attempts": 3
     },
@@ -224,12 +230,21 @@
         "id": "join_with_known_key",
         "category": "join",
         "question": "Show symbols and market cap by joining prices with fundamentals",
-        "execute": false,
-        "expected_valid": false,
-        "expected_error_any_of": [
-            "Unknown dataset"
+        "execute": true,
+        "expected_valid": true,
+        "expected_sql_contains": [
+            "SELECT",
+            "FROM prices",
+            "JOIN fundamentals",
+            "symbol",
+            "market_cap"
         ],
-        "max_attempts": 3
+        "expected_columns": [
+            "symbol",
+            "market_cap"
+        ],
+        "expected_row_count": 2,
+        "max_attempts": 2
     },
     {
         "id": "group_by_having",
@@ -254,12 +269,19 @@
         "id": "subquery_in",
         "category": "subquery",
         "question": "Show rows for symbols that exist in fundamentals",
-        "execute": false,
-        "expected_valid": false,
-        "expected_error_any_of": [
-            "Unknown dataset"
+        "execute": true,
+        "expected_valid": true,
+        "expected_sql_contains": [
+            "SELECT",
+            "FROM prices",
+            "IN (SELECT symbol FROM fundamentals)"
         ],
-        "max_attempts": 3
+        "expected_columns": [
+            "symbol",
+            "close"
+        ],
+        "expected_row_count": 2,
+        "max_attempts": 2
     },
     {
         "id": "scalar_subquery",
