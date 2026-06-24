@@ -49,6 +49,27 @@ def build_registry() -> DatasetRegistry:
         ),
     )
 
+    registry.register_table(
+        "fundamentals",
+        pa.table(
+            {
+                "symbol": ["AAPL", "MSFT"],
+                "market_cap": [2900000000000, 3200000000000],
+            }
+        ),
+        metadata=DatasetMetadata(
+            description="Basic company fundamentals for a subset of securities.",
+            columns={
+                "symbol": DatasetColumnMetadata(
+                    description="Ticker symbol shared with the prices dataset."
+                ),
+                "market_cap": DatasetColumnMetadata(
+                    description="Approximate market capitalization in USD."
+                ),
+            },
+        ),
+    )
+
     return registry
 
 
@@ -78,15 +99,6 @@ class LiveEvalQueryService:
                 columns=["volume"],
             )
 
-        if " FROM FUNDAMENTALS" in upper_sql or " JOIN FUNDAMENTALS" in upper_sql:
-            return self._invalid(
-                sql=sql,
-                normalized_sql=normalized_sql,
-                errors=["Unknown dataset 'fundamentals'"],
-                tables=["fundamentals"],
-                columns=["*"],
-            )
-
         if "TICKER" in upper_sql:
             return self._invalid(
                 sql=sql,
@@ -114,6 +126,33 @@ class LiveEvalQueryService:
                 columns=["sector"],
             )
 
+        if "MARKET_CAP" in upper_sql and "FUNDAMENTALS" not in upper_sql:
+            return self._invalid(
+                sql=sql,
+                normalized_sql=normalized_sql,
+                errors=["Unknown column 'market_cap' on dataset 'prices'"],
+                tables=["prices"],
+                columns=["market_cap"],
+            )
+
+        tables: list[str]
+        if "FUNDAMENTALS" in upper_sql and "PRICES" in upper_sql:
+            tables = ["prices", "fundamentals"]
+        elif "FUNDAMENTALS" in upper_sql:
+            tables = ["fundamentals"]
+        else:
+            tables = ["prices"]
+
+        if "JOIN" in upper_sql:
+            if "PRICES.SYMBOL" not in upper_sql and " P.SYMBOL" not in upper_sql:
+                return self._invalid(
+                    sql=sql,
+                    normalized_sql=normalized_sql,
+                    errors=["Ambiguous column 'symbol'"],
+                    tables=["prices"],
+                    columns=["symbol"],
+                )
+
         columns = self._infer_columns(upper_sql)
 
         return {
@@ -122,7 +161,7 @@ class LiveEvalQueryService:
             "is_valid": True,
             "query_type": "SELECT",
             "errors": [],
-            "tables": ["prices"],
+            "tables": tables,
             "columns": columns,
             "has_where": "WHERE" in upper_sql,
             "has_group_by": "GROUP BY" in upper_sql,
@@ -131,8 +170,14 @@ class LiveEvalQueryService:
         }
 
     def _infer_columns(self, upper_sql: str) -> list[str]:
+        if "MARKET_CAP" in upper_sql and "SYMBOL" in upper_sql:
+            return ["symbol", "market_cap"]
+        if "COUNT(" in upper_sql and "AVG(" in upper_sql:
+            return ["symbol", "row_count", "avg_close"]
         if "COUNT(" in upper_sql:
             return ["count"]
+        if "AVG(" in upper_sql and "GROUP BY" in upper_sql:
+            return ["symbol", "avg_close"]
         if "SELECT SYMBOL, CLOSE " in upper_sql or "SELECT SYMBOL, CLOSE FROM " in upper_sql:
             return ["symbol", "close"]
         if "SELECT CLOSE " in upper_sql or "SELECT CLOSE FROM " in upper_sql or "SELECT CLOSE," in upper_sql:
@@ -170,7 +215,19 @@ class LiveEvalQueryService:
 
         upper_sql = normalized_sql.upper()
 
-        if "SELECT SYMBOL, CLOSE " in upper_sql and "WHERE SYMBOL = 'MSFT'" in upper_sql:
+        if "JOIN FUNDAMENTALS" in upper_sql and "MARKET_CAP" in upper_sql:
+            rows = [
+                {"symbol": "AAPL", "market_cap": 2900000000000},
+                {"symbol": "MSFT", "market_cap": 3200000000000},
+            ]
+            columns = ["symbol", "market_cap"]
+        elif "IN (SELECT SYMBOL FROM FUNDAMENTALS)" in upper_sql:
+            rows = [
+                {"symbol": "AAPL", "close": 189.12},
+                {"symbol": "MSFT", "close": 425.27},
+            ]
+            columns = ["symbol", "close"]
+        elif "SELECT SYMBOL, CLOSE " in upper_sql and "WHERE SYMBOL = 'MSFT'" in upper_sql:
             rows = [{"symbol": "MSFT", "close": 425.27}]
             columns = ["symbol", "close"]
         elif "SELECT CLOSE " in upper_sql and "WHERE SYMBOL = 'AAPL'" in upper_sql:
@@ -188,6 +245,12 @@ class LiveEvalQueryService:
         elif "COUNT(" in upper_sql:
             rows = [{"count": 5}]
             columns = ["count"]
+        elif "AVG(" in upper_sql and "GROUP BY" in upper_sql:
+            rows = [
+                {"symbol": "AAPL", "avg_close": 189.12},
+                {"symbol": "MSFT", "avg_close": 425.27},
+            ]
+            columns = ["symbol", "avg_close"]
         elif "SYMBOL, CLOSE" in upper_sql or ("SYMBOL" in upper_sql and "CLOSE" in upper_sql):
             rows = [
                 {"symbol": "AAPL", "close": 189.12},
@@ -241,7 +304,9 @@ def assert_eval_case(result, case: dict) -> None:
 
         if "expected_error_contains" in case:
             for expected_error in case["expected_error_contains"]:
-                assert any(expected_error in error for error in result.validation.errors)
+                assert any(
+                    expected_error in error for error in result.validation.errors
+                )
 
         if "expected_error_any_of" in case:
             assert any(
@@ -330,6 +395,9 @@ def main() -> None:
             "hallucination": 0.5,
             "unsupported_feature": 0.5,
             "ambiguous": 0.5,
+            "aggregate": 0.5,
+            "join": 0.5,
+            "subquery": 0.5,
         },
     )
 
