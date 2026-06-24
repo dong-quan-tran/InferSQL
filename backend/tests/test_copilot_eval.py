@@ -469,6 +469,60 @@ def build_candidates_by_question() -> dict[str, list[CopilotSqlCandidate]]:
                 confidence=0.28,
             )
         ],
+        "Show symbols and market cap by joining prices with fundamentals": [
+            CopilotSqlCandidate(
+                sql=(
+                    "SELECT p.symbol, f.market_cap "
+                    "FROM prices AS p "
+                    "JOIN fundamentals AS f ON p.symbol = f.symbol"
+                ),
+                assumptions=["Used symbol as the join key because it exists in both tables."],
+                referenced_tables=["prices", "fundamentals"],
+                referenced_columns=["symbol", "market_cap"],
+                confidence=0.88,
+            ),
+        ],
+        "Show symbols with more than 10 rows and average close above 100": [
+            CopilotSqlCandidate(
+                sql=(
+                    "SELECT symbol, COUNT(*) AS row_count, AVG(close) AS avg_close "
+                    "FROM prices "
+                    "GROUP BY symbol "
+                    "HAVING COUNT(*) > 10 AND AVG(close) > 100"
+                ),
+                assumptions=[],
+                referenced_tables=["prices"],
+                referenced_columns=["symbol", "close"],
+                confidence=0.9,
+            ),
+        ],
+        "Show rows for symbols that exist in fundamentals": [
+            CopilotSqlCandidate(
+                sql=(
+                    "SELECT symbol, close "
+                    "FROM prices "
+                    "WHERE symbol IN (SELECT symbol FROM fundamentals)"
+                ),
+                assumptions=[],
+                referenced_tables=["prices", "fundamentals"],
+                referenced_columns=["symbol", "close"],
+                confidence=0.87,
+            ),
+        ],
+        "For each symbol, show its average close and the overall average close": [
+            CopilotSqlCandidate(
+                sql=(
+                    "SELECT symbol, AVG(close) AS avg_close, "
+                    "(SELECT AVG(close) FROM prices) AS overall_avg_close "
+                    "FROM prices "
+                    "GROUP BY symbol"
+                ),
+                assumptions=[],
+                referenced_tables=["prices"],
+                referenced_columns=["symbol", "close"],
+                confidence=0.86,
+            ),
+        ],
     }
 
 
@@ -570,5 +624,7 @@ def test_copilot_eval_suite_summary() -> None:
             "unsupported_feature": 1.0,
             "ambiguous": 1.0,
             "aggregate": 1.0,
+            "join": 1.0,
+            "subquery": 1.0,
         },
     )

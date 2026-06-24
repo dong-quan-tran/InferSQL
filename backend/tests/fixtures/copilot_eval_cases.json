@@ -219,5 +219,64 @@
             "Could not determine best performing"
         ],
         "max_attempts": 2
+    },
+    {
+        "id": "join_with_known_key",
+        "category": "join",
+        "question": "Show symbols and market cap by joining prices with fundamentals",
+        "execute": false,
+        "expected_valid": false,
+        "expected_error_any_of": [
+            "Unknown dataset"
+        ],
+        "max_attempts": 3
+    },
+    {
+        "id": "group_by_having",
+        "category": "aggregate",
+        "question": "Show symbols with more than 10 rows and average close above 100",
+        "execute": false,
+        "expected_valid": true,
+        "expected_sql_contains": [
+            "GROUP BY",
+            "HAVING",
+            "AVG(",
+            "COUNT("
+        ],
+        "expected_columns": [
+            "symbol",
+            "row_count",
+            "avg_close"
+        ],
+        "max_attempts": 2
+    },
+    {
+        "id": "subquery_in",
+        "category": "subquery",
+        "question": "Show rows for symbols that exist in fundamentals",
+        "execute": false,
+        "expected_valid": false,
+        "expected_error_any_of": [
+            "Unknown dataset"
+        ],
+        "max_attempts": 3
+    },
+    {
+        "id": "scalar_subquery",
+        "category": "subquery",
+        "question": "For each symbol, show its average close and the overall average close",
+        "execute": false,
+        "expected_valid": true,
+        "expected_sql_contains": [
+            "SELECT",
+            "AVG(",
+            "GROUP BY",
+            "(SELECT AVG(close) FROM prices)"
+        ],
+        "expected_columns": [
+            "symbol",
+            "avg_close"
+        ],
+        "max_attempts": 2
     }
 ]
