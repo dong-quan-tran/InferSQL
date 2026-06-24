@@ -395,7 +395,7 @@ If you are unsure whether a feature is supported:
 
 ## Copilot and eval harness
 
-InferSQL includes a small, self-contained copilot layer that generates SQL candidates from natural language questions over the registered datasets. The copilot flow is fully test-backed and designed to support multiple LLM providers without hard-wiring to any specific API.
+InferSQL includes a small, self-contained copilot layer that generates SQL candidates from natural language questions over the registered datasets. The copilot flow is fully test-backed and designed to support multiple LLM providers without hard-wiring to any specific API.[web:723][web:726]
 
 ### Copilot architecture (developer view)
 
@@ -404,20 +404,63 @@ InferSQL includes a small, self-contained copilot layer that generates SQL candi
   - calls an `LLMProvider` to generate a `CopilotSqlCandidate`,
   - validates the candidate via the query service (`/query/validate` behavior),
   - optionally executes the candidate via the query service (`/query/execute` behavior),
-  - returns a structured result with validation, execution (optional), and candidate metadata.
+  - returns a structured result with validation, execution (optional), and candidate metadata.[web:726]
 - `LLMProvider` is the common interface for all LLM backends. Concrete implementations live in `app.services.llm.*`:
   - `OllamaLLMProvider` is the default local provider and has no paid dependencies.
   - `GeminiLLMProvider` and `OpenAILLMProvider` are optional:
     - they use lazy imports (`google-genai`, `openai`) inside `__init__`,
-    - they are only required if you choose those providers and install the corresponding SDKs.
+    - they are only required if you choose those providers and install the corresponding SDKs.[web:723]
 - `build_llm_provider` in `app.services.llm.factory` centralizes provider selection:
   - reads a provider name (e.g. `ollama`, `gemini`, `openai`, `auto`),
   - constructs the appropriate provider with configuration such as base URL, model name, and temperature,
-  - wraps primary providers in a `FallbackLLMProvider` so Ollama is always available as a fallback when configured.
+  - wraps primary providers in a `FallbackLLMProvider` so Ollama is always available as a fallback when configured.[web:723]
 
-This provider abstraction means you can add or switch LLM backends without changing `CopilotService` or the rest of the API layer; only the factory configuration and dependencies need to change.
+This provider abstraction means you can add or switch LLM backends without changing `CopilotService` or the rest of the API layer; only the factory configuration and dependencies need to change.[web:723]
 
-### Copilot evals
+### Copilot prompts
+
+Copilot uses a prompt builder that is explicitly aligned with the tested broad SQL surface and structured-output requirements:[web:716][web:723]
+
+- `build_system_prompt`:
+  - instructs the model to:
+    - generate only `SELECT` queries over registered datasets,
+    - use a broad but explicit analytical SQL subset (joins, grouped aggregates, `HAVING`, subqueries, set operations),
+    - ground all references in the provided schema context (no invented tables, columns, or join keys),
+    - qualify columns in multi-table queries when ambiguity is possible,
+    - map business synonyms (e.g. “ticker”, “price”) to canonical schema columns when supported and record those mappings in `assumptions`,
+    - choose conservative interpretations for ambiguous questions (e.g. “latest”, “best”) and document limitations in `assumptions`,
+    - return exactly one JSON object that matches the `CopilotSqlCandidate` schema (no prose, no markdown fences, no extra keys).
+- `build_user_prompt`:
+  - injects registry-backed schema context, synonym guidance, and few-shot examples,
+  - explains how to:
+    - prefer the smallest valid query that answers the question,
+    - use joins only when necessary and with explicit join conditions grounded in the schema,
+    - use grouped aggregates and `HAVING` when appropriate,
+    - use subqueries (`IN`, scalar, derived tables) when needed,
+    - repair schema mismatches and ambiguity via explicit `assumptions` rather than silent changes.[web:704][web:716]
+
+Together, these prompts enforce a structured-output contract for Copilot and make the behavior match the eval harness’s expectations.[web:704][web:726]
+
+### Copilot evals (Phase 9)
+
+Phase 9 migrated Copilot from a narrow, single-table world to a tested **broad SQL** surface aligned with the DataFusion-backed architecture:[web:719][web:725]
+
+- The eval harness now covers:
+  - simple single-table projections and filters,
+  - synonym and schema-mismatch repair (e.g. `ticker` → `symbol`, `price` → `close`),
+  - hallucinated datasets/columns and unsupported features,
+  - aggregate queries with `COUNT`/`AVG` and `HAVING` on grouped results,
+  - successful joins between `prices` and `fundamentals`,
+  - successful subqueries over the richer registry (e.g. `IN (SELECT symbol FROM fundamentals)`, scalar subqueries for overall aggregates).[web:719][web:725][web:728]
+- Eval cases are grouped into categories such as:
+  - `simple_select`,
+  - `synonym`,
+  - `hallucination`,
+  - `unsupported_feature`,
+  - `ambiguous`,
+  - `aggregate`,
+  - `join`,
+  - `subquery`.[web:719][web:725]
 
 Copilot behavior is covered by a dedicated eval harness and two entry points:
 
@@ -425,40 +468,35 @@ Copilot behavior is covered by a dedicated eval harness and two entry points:
   - uses `EvalLLMProvider`, a fake provider that returns deterministic `CopilotSqlCandidate` objects based on the original question,
   - uses `EvalQueryService`, a fake query service that:
     - normalizes SQL and inspects it for known patterns,
-    - simulates current product behavior for:
+    - simulates product behavior for:
       - valid single-table queries on the `prices` dataset,
-      - unknown datasets (`trades`, `fundamentals`),
-      - unknown columns (`ticker`, `price`, `sector`),
-      - joins, grouped aggregates, and `HAVING` where explicitly handled,
-    - returns a validation shape compatible with `/query/validate` and `/query/execute`.
+      - joins and aggregates that are expected to succeed,
+      - unknown datasets (`trades`), unknown columns (`ticker`, `price`, `sector`), and unsupported semantics,
+    - returns a validation shape compatible with `/query/validate` and `/query/execute`.[web:719][web:725]
   - loads eval cases from `tests/fixtures/copilot_eval_cases.json`. Each case defines:
-    - an `id` and `category` (e.g. `simple_select`, `synonym`, `hallucination`, `unsupported_feature`, `ambiguous`, `aggregate`),
+    - an `id` and `category`,
     - a natural-language `question`,
     - whether execution should be attempted (`execute`),
-    - expectations for validity, columns, row counts, SQL fragments, and error messages.
+    - expectations for validity, columns, row counts, SQL fragments, error messages, and assumptions.[web:719]
   - includes:
     - a parametrized test that asserts each case individually, and
-    - a suite summary test that builds category-level metrics and enforces minimum pass-rate thresholds.
+    - a suite summary test that builds category-level metrics and enforces minimum pass-rate thresholds, including 100% for critical categories like `simple_select`, `hallucination`, `unsupported_feature`, and `join`.[web:722][web:725]
 - `scripts/run_copilot_live_eval.py`:
   - runs the same `CopilotService` flow against a real `LLMProvider` (typically Ollama in local development),
-  - uses a simple Arrow-backed `prices` table registered through `DatasetRegistry`,
+  - uses Arrow-backed `prices` and `fundamentals` tables registered through `DatasetRegistry`,
   - reuses the same eval cases and assertion logic as the unit tests,
   - prints a JSON summary including:
     - provider name and model,
     - overall pass rate,
     - per-category pass rates,
-    - details for failing cases (question, generated SQL, assumptions, validation errors),
-  - enforces configurable thresholds so you can fail a CI job or local check if regressions occur.
+    - details for failing cases (question, generated SQL, assumptions, validation errors).[web:720][web:726]
+  - enforces configurable thresholds so you can fail a CI job or local check if regressions occur.[web:721][web:726]
 
-The eval cases intentionally model a small but representative SQL surface:
+As you broaden the SQL surface area that Copilot should reliably handle beyond Phase 9, the workflow is:[web:719][web:722][web:731]
 
-- simple single-table projections and filters,
-- synonym and schema-mismatch repair (e.g., `ticker` → `symbol`, `price` → `close`),
-- hallucinated datasets/columns and unsupported features,
-- aggregate queries with `COUNT`/`AVG` and `HAVING` on grouped results,
-- early coverage for joins and subqueries, currently focused on correct handling of unknown datasets and columns.
-
-As you broaden the SQL surface area that Copilot should reliably handle, add new eval cases first (and extend `EvalQueryService` where needed), then tune prompts or providers until the eval suite and live eval both pass at the desired thresholds.
+1. Add new eval cases (and extend `EvalQueryService` where needed) to cover the desired behavior.
+2. Tune prompts or providers until the eval suite and live eval both pass at the desired thresholds.
+3. Update this file and `todo.md` to document the new supported surface.
 
 ### Copilot evals only
 

@@ -127,9 +127,9 @@ Notes:
 - [x] Make Gemini/OpenAI providers optional (lazy imports, optional deps)
 - [x] Add live eval script using Ollama only (no paid providers required)
 - [x] Expand copilot eval cases to cover aggregates and `HAVING`
-- [ ] Expand copilot eval cases to cover successful multi-table joins
-- [ ] Expand copilot eval cases to cover subqueries that succeed against a richer registry
-- [ ] Tune copilot repair prompts for ambiguous joins and schema mismatches
+- [x] Expand copilot eval cases to cover successful multi-table joins
+- [x] Expand copilot eval cases to cover subqueries that succeed against a richer registry
+- [x] Tune copilot repair prompts for ambiguous joins and schema mismatches
 
 Phase 10 – Error Handling & UX  
 Status: [~]
