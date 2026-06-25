@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+import pytest
 
 
 # Basic execution and shape
@@ -844,9 +845,6 @@ def test_query_execute_debug_metadata_includes_timings_and_engine(client: TestCl
     assert isinstance(debug["features"], list)
 
 
-# Simple unknown-column / dataset tests (non-normalized-shape legacy ones)
-
-
 def test_query_execute_rejects_unknown_column(client: TestClient) -> None:
     response = client.post(
         "/query/execute",
@@ -867,6 +865,25 @@ def test_query_execute_rejects_unknown_dataset(client: TestClient) -> None:
     assert response.status_code == 404
     assert response.json()["error"]["type"] == "UnknownDatasetError"
     assert response.json()["error"]["message"] == "Unknown dataset 'missing_table'"
+
+
+def test_query_execute_debug_metadata_on_unknown_column_error(client: TestClient) -> None:
+    response = client.post(
+        "/query/execute?debug=true",
+        json={"sql": "SELECT missing_column FROM prices"},
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    err = payload["error"]
+    assert err["code"] == "UNKNOWNCOLUMNERROR"
+
+    debug = err.get("debug")
+    assert debug is not None
+    assert debug["stage"] == "error"
+    # For client-side schema errors we expect no engine / error_origin.
+    assert debug["engine"] is None
+    assert debug["error_origin"] is None
 
 
 # Window functions
@@ -1000,3 +1017,82 @@ def test_query_execute_window_sum_over_running_total(client: TestClient) -> None
     # running_close should equal close for every row.
     for row in rows:
         assert row["running_close"] == row["close"]
+
+
+def test_query_execute_internal_engine_failure_returns_500(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services.datafusion_runner import DataFusionRunner
+
+    def _boom(self, *args, **kwargs):
+        raise Exception("datafusion execution error: panic")
+
+    monkeypatch.setattr(DataFusionRunner, "run", _boom)
+
+    response = client.post(
+        "/query/execute",
+        json={"sql": "SELECT symbol FROM prices"},
+    )
+
+    assert response.status_code == 500
+    payload = response.json()
+    assert payload["error"]["type"] == "InternalServerError"
+    assert payload["error"]["code"] == "INTERNALSERVERERROR"
+    assert "Internal execution engine failure" in payload["error"]["message"]
+
+
+def test_query_execute_debug_metadata_on_internal_engine_failure(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services.datafusion_runner import DataFusionRunner
+
+    def _boom(self, *args, **kwargs):
+        raise Exception("datafusion execution error: panic")
+
+    monkeypatch.setattr(DataFusionRunner, "run", _boom)
+
+    response = client.post(
+        "/query/execute?debug=true",
+        json={"sql": "SELECT symbol FROM prices"},
+    )
+
+    assert response.status_code == 500
+    payload = response.json()
+    err = payload["error"]
+    assert err["code"] == "INTERNALSERVERERROR"
+
+    debug = err.get("debug")
+    assert debug is not None
+    assert debug["stage"] == "error"
+    assert debug["engine"] == "datafusion"
+    assert debug["error_origin"] == "engine_execution"
+
+
+def test_query_execute_debug_metadata_on_internal_engine_failure(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services.datafusion_runner import DataFusionRunner
+
+    def _boom(self, *args, **kwargs):
+        raise Exception("datafusion execution error: panic")
+
+    monkeypatch.setattr(DataFusionRunner, "run", _boom)
+
+    response = client.post(
+        "/query/execute?debug=true",
+        json={"sql": "SELECT symbol FROM prices"},
+    )
+
+    assert response.status_code == 500
+    payload = response.json()
+    err = payload["error"]
+    assert err["code"] == "INTERNALSERVERERROR"
+
+    debug = err.get("debug")
+    assert debug is not None
+    assert debug["stage"] == "error"
+    assert debug["engine"] == "datafusion"
+    assert debug["error_origin"] == "engine_execution"

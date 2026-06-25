@@ -295,7 +295,7 @@ def test_query_validate_join_ambiguous_unqualified_column_fails(client: TestClie
     assert any("Ambiguous unqualified column 'symbol'" in error for error in payload["errors"])
 
 
-def test_query_validate_rejects_select_star_with_group_by(client: TestClient) -> None:
+def test_query_validate_rejects_select_star_with_group_by_duplicate(client: TestClient) -> None:
     response = client.post(
         "/query/validate",
         json={
@@ -357,3 +357,27 @@ def test_query_validate_does_not_block_engine_owned_grouped_semantics(
             "UNKNOWNCOLUMNERROR",
             "INVALIDQUERYSYNTAXERROR",
         )
+
+
+def test_query_validate_debug_metadata_includes_features(client: TestClient) -> None:
+    response = client.post(
+        "/query/validate?debug=true",
+        json={"sql": "SELECT symbol, close FROM prices LIMIT 10"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    debug = payload.get("debug")
+    assert debug is not None
+    assert debug["stage"] == "validate"
+    assert isinstance(debug["total_ms"], (int, float))
+
+    # engine is omitted because response_model_exclude_none=True
+    assert "engine" not in debug or debug["engine"] is None
+
+    features = debug.get("features")
+    assert isinstance(features, list)
+    assert "join" not in features
+    assert "set_op" not in features
+    assert "window" not in features
