@@ -77,10 +77,49 @@ def test_error_response_schema_is_present_in_openapi_components() -> None:
 
     error_detail = schemas["ErrorDetail"]
     assert error_detail["type"] == "object"
-    assert set(error_detail["properties"].keys()) == {
+    assert {
         "type",
         "code",
         "message",
         "status_code",
         "request_id",
-    }
+    }.issubset(set(error_detail["properties"].keys()))
+
+def test_query_routes_have_summaries_and_descriptions() -> None:
+    response = client.get("/openapi.json")
+    assert response.status_code == 200
+
+    data = response.json()
+
+    validate_post = data["paths"]["/query/validate"]["post"]
+    plan_post = data["paths"]["/query/plan"]["post"]
+    execute_post = data["paths"]["/query/execute"]["post"]
+
+    assert validate_post["summary"] == "Validate a SQL query"
+    assert "validates a sql query" in validate_post["description"].lower()
+
+    assert plan_post["summary"] == "Build a query plan"
+    assert "logical and physical plan" in plan_post["description"].lower()
+
+    assert execute_post["summary"] == "Execute a SQL query"
+    assert "limit" in execute_post["description"].lower()
+    assert "offset" in execute_post["description"].lower()
+
+
+def test_error_response_schema_documents_optional_debug_metadata() -> None:
+    response = client.get("/openapi.json")
+    assert response.status_code == 200
+
+    data = response.json()
+    schemas = data["components"]["schemas"]
+
+    assert "ErrorResponse" in schemas
+    assert "ErrorDetail" in schemas
+
+    error_detail = schemas["ErrorDetail"]
+    properties = error_detail["properties"]
+
+    assert "debug" in properties
+
+    debug_schema = properties["debug"]
+    assert "anyOf" in debug_schema or "$ref" in debug_schema

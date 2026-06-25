@@ -31,12 +31,19 @@ class DebugMetadata(BaseModel):
     error_origin: str | None = None
     features: list[str] | None = None
 
+class ErrorDebugDetail(BaseModel):
+    stage: str
+    engine: str | None = None
+    error_origin: str | None = None
+
+
 class ErrorDetail(BaseModel):
     type: str
     code: str
     message: str
     status_code: int
     request_id: str
+    debug: ErrorDebugDetail | None = None
 
 
 class ErrorResponse(BaseModel):
