@@ -17,6 +17,7 @@ from app.core.exceptions import (
     UnknownColumnError,
     UnknownDatasetError,
     UnsupportedQueryError,
+    InternalServerError,
 )
 from app.core.settings import Settings
 from app.schemas.query import PlanNode, SchemaReferenceSummary, ValidationSummary
@@ -49,6 +50,17 @@ class QueryService:
     def _hash_sql(self, normalized_sql: str) -> str:
         return hashlib.sha256(normalized_sql.encode("utf-8")).hexdigest()[:16]
     
+    def _internal_engine_error(
+        self,
+        *,
+        message: str = "Internal execution engine failure",
+        engine: str = "datafusion",
+        error_origin: str = "engine_execution",
+    ) -> InternalServerError:
+        exc = InternalServerError(message)
+        exc.engine = engine
+        exc.error_origin = error_origin
+        return exc
 
     def _build_debug_info(
         self,
@@ -788,7 +800,7 @@ class QueryService:
         lowered = message.lower()
 
         if "panic" in lowered or exc.__class__.__name__ == "PanicException":
-            return UnsupportedQueryError("DataFusion execution error")
+            return self._internal_engine_error()
 
         if (
             "sql parser error" in lowered
@@ -850,7 +862,7 @@ class QueryService:
         ):
             return UnsupportedQueryError("Query is not supported by the execution engine")
 
-        return UnsupportedQueryError("DataFusion execution error")
+        return self._internal_engine_error()
 
     def _find_node(self, node: PlanNode, node_type: str):
         if node.node_type == node_type:
