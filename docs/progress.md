@@ -673,3 +673,46 @@ New tests asserting normalized error responses and debug metadata.
   - enforces configurable overall and per-category pass-rate thresholds.
 - Extended the copilot eval suite to cover aggregate + `HAVING` behavior under a dedicated `aggregate` category.
 - Confirmed all tests are green (`python -m pytest`) after the Phase 9 changes.
+
+
+# Progress Log — 2026-06-24
+
+## Summary
+
+Wrapped up Phase 10 for InferSQL backend work: error handling, debug metadata, copilot eval stability, OpenAPI/schema alignment, and docs were all completed.
+
+## Completed
+
+- Fixed the copilot eval harness so all `test_copilot_eval.py` cases pass.
+- Hardened `QueryService` error mapping from DataFusion into product exceptions.
+- Added structured internal engine metadata using:
+  - `engine="datafusion"`
+  - `error_origin="engine_execution"`
+- Normalized error responses across query endpoints with a consistent `error` envelope.
+- Wired `debug=true` through the query API so error responses include optional debug metadata.
+- Updated OpenAPI-facing schemas so `ErrorDetail.debug` is documented and tested.
+- Fixed execute/validate failure-path tests around internal engine errors and debug payloads.
+- Updated `README.md`, `DEVELOPMENT.md`, and `todo.md` to reflect the final Phase 10 behavior.
+- Marked Phase 10 as complete.
+
+## Files touched
+
+- `app/api/query.py`
+- `app/core/error_handlers.py`
+- `app/core/exceptions.py`
+- `app/services/query_service.py`
+- `app/schemas/query.py`
+- `tests/test_copilot_eval.py`
+- `tests/test_query_execute.py`
+- `tests/test_query_validate.py`
+- `tests/test_openapi.py`
+- `README.md`
+- `DEVELOPMENT.md`
+- `todo.md`
+
+## Outcome
+
+- All tests are green.
+- Query error handling is now consistent across service, API, schema, and docs.
+- Debug metadata is implemented, documented, and covered by tests.
+- Phase 10 is fully wrapped up and should not need to be revisited unless the error contract changes in a future phase.

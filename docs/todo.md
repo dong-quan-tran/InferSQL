@@ -132,19 +132,22 @@ Notes:
 - [x] Tune copilot repair prompts for ambiguous joins and schema mismatches
 
 Phase 10 – Error Handling & UX  
-Status: [~]
+Status: [x]
 
 Completed:
-- Normalized DataFusion errors into product exceptions (`InvalidQuerySyntaxError`, `UnknownDatasetError`, `UnknownColumnError`, `UnsupportedQueryError`).
+- Normalized DataFusion errors into product exceptions (`InvalidQuerySyntaxError`, `UnknownDatasetError`, `UnknownColumnError`, `UnsupportedQueryError`, `InternalServerError`).
 - Added mapping for common engine error strings (ambiguous columns, unsupported features, bad set operation shapes).
+- Attached structured error envelopes (`ErrorResponse` / `ErrorDetail`) with `type`, `code`, `message`, `status_code`, `request_id` across `/query/validate`, `/query/plan`, `/query/execute`.
+- Implemented optional error-level debug metadata (`debug.stage`, `debug.engine`, `debug.error_origin`) and documented it in the OpenAPI schema.
+- Wired the `debug` query parameter through the request lifecycle so errors include debug metadata only when explicitly requested.
+- Documented status-code and error behavior in `README.md` and `DEVELOPMENT.md`.
+- Added and fixed tests covering:
+  - internal engine failures and debug metadata on `/query/execute`,
+  - debug metadata on `/query/validate`,
+  - OpenAPI documentation for error and debug fields.
 
 Remaining:
-- Decide whether to expose `error_origin` in debug metadata only or document it as a stable field.
-- Decide whether to add a dedicated `DataFusionExecutionError` for internal engine failures.
-- Add a few final failure-path tests:
-  - unsupported window features if windows are attempted,
-  - any remaining engine-planning edge cases worth normalizing.
-- Document status-code behavior in one place.
+- None for Phase 10. Further changes to error handling or debug metadata should be considered part of future phases.
 
 Phase 11 – Observability  
 Status: done
