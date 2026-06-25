@@ -17,6 +17,10 @@ class NotFoundError(InferSQLError):
     """Represents a 404-style error."""
 
 
+class InternalServerError(InferSQLError):
+    """Represents an unexpected 500-style internal error."""
+
+
 class EmptyQueryError(BadRequestError):
     """SQL string is blank or only whitespace."""
 

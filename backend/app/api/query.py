@@ -38,6 +38,10 @@ def _request_id(request: Request) -> str:
     return getattr(request.state, "request_id", "unknown")
 
 
+def _set_request_debug(request: Request, debug: bool) -> None:
+    request.state.debug = debug
+
+
 @router.post(
     "/query/validate",
     response_model=QueryValidationResponse,
@@ -59,6 +63,7 @@ def validate_query(
     query_service: Annotated[QueryService, Depends(get_query_service)],
     debug: bool = Query(False),
 ) -> QueryValidationResponse:
+    _set_request_debug(request, debug)
     return query_service.validate(
         sql=payload.sql,
         request_id=_request_id(request),
@@ -78,6 +83,7 @@ def plan_query(
     query_service: Annotated[QueryService, Depends(get_query_service)],
     debug: bool = Query(False),
 ) -> QueryPlanResponse:
+    _set_request_debug(request, debug)
     return query_service.plan(
         sql=payload.sql,
         request_id=_request_id(request),
@@ -99,6 +105,7 @@ def execute_query(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> QueryExecuteResponse:
+    _set_request_debug(request, debug)
     return query_service.execute(
         sql=payload.sql,
         request_id=_request_id(request),
