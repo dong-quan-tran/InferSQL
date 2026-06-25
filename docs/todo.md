@@ -174,22 +174,12 @@ Completed:
   - `error_code` on completion.
 - Added a logging test to ensure `/query/execute` emits a structured log record with these fields.
 
-Phase 12 – Benchmarks  
-Status: not started
+### Phase 12 – Performance benchmark harness
 
-Remaining:
-- Build the benchmark script for:
-  - filter/project/limit,
-  - aggregate/group by,
-  - order by + limit,
-  - joins.
-- Run it over:
-  - 1k,
-  - 10k,
-  - 100k,
-  - 1M rows.
-- Save CSV/JSON summaries to disk.
-- Check in a baseline file and short interpretation notes.
+- [x] Add an in-process benchmark script that exercises `/query/execute` against synthetic Arrow-backed datasets.
+- [x] Seed `prices_bench_*` and `fundamentals_bench_*` tables into the in-memory registry at runtime inside the benchmark script.
+- [x] Run benchmarks across 1k / 10k / 100k / 1M rows for filter, aggregate, order-by, and join query shapes.
+- [x] Persist results to `benchmark_results/benchmark_summary_<RUN_ID>.json` and `.csv`, plus per-iteration CSV, and capture a Phase 12 baseline.
 
 Phase 13 – Docs  
 Status: [~]

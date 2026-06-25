@@ -1,0 +1,363 @@
+{
+  "metadata": {
+    "run_id": "20260625T221025Z",
+    "timestamp_utc": "20260625T221025Z",
+    "transport": "httpx.ASGITransport + asgi_lifespan.LifespanManager",
+    "iterations_per_workload": 20,
+    "git_commit_sha": "01bb2dc073336a5b056e6f07bc068154816ae765",
+    "git_branch": "main",
+    "python_version": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+    "python_implementation": "CPython",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "system": "Windows",
+    "release": "10",
+    "machine": "AMD64",
+    "hostname": "JZ"
+  },
+  "results": [
+    {
+      "name": "EXECUTE FILTER_PROJECT_LIMIT 1000",
+      "endpoint": "/query/execute",
+      "query_shape": "filter_project_limit",
+      "dataset_rows": 1000,
+      "sql": "SELECT symbol, close FROM prices_bench_1000 WHERE close > 100 LIMIT 100",
+      "iterations": 20,
+      "row_count": 100,
+      "min_ms": 5.97,
+      "mean_ms": 7.061,
+      "median_ms": 6.882,
+      "p95_ms": 8.197,
+      "max_ms": 9.822,
+      "sample_debug": {
+        "request_id": "2bc0418a-7da5-449b-82c4-61c5c075d7dd",
+        "total_ms": 2.958199998829514,
+        "stage": "execute",
+        "engine": "datafusion",
+        "features": []
+      }
+    },
+    {
+      "name": "EXECUTE AGGREGATE_GROUP_BY 1000",
+      "endpoint": "/query/execute",
+      "query_shape": "aggregate_group_by",
+      "dataset_rows": 1000,
+      "sql": "SELECT symbol, AVG(close) AS avg_close FROM prices_bench_1000 GROUP BY symbol",
+      "iterations": 20,
+      "row_count": 100,
+      "min_ms": 7.454,
+      "mean_ms": 9.567,
+      "median_ms": 8.314,
+      "p95_ms": 11.011,
+      "max_ms": 32.606,
+      "sample_debug": {
+        "request_id": "f6d22fed-3621-4e2a-8666-c19dc5ade82a",
+        "total_ms": 5.26710000121966,
+        "stage": "execute",
+        "engine": "datafusion",
+        "features": []
+      }
+    },
+    {
+      "name": "EXECUTE ORDER_BY_LIMIT 1000",
+      "endpoint": "/query/execute",
+      "query_shape": "order_by_limit",
+      "dataset_rows": 1000,
+      "sql": "SELECT symbol, close FROM prices_bench_1000 ORDER BY close DESC LIMIT 100",
+      "iterations": 20,
+      "row_count": 100,
+      "min_ms": 5.435,
+      "mean_ms": 6.544,
+      "median_ms": 6.632,
+      "p95_ms": 7.252,
+      "max_ms": 7.746,
+      "sample_debug": {
+        "request_id": "220a24b2-db24-4bd9-958f-41cab090e5b7",
+        "total_ms": 3.2796000014059246,
+        "stage": "execute",
+        "engine": "datafusion",
+        "features": []
+      }
+    },
+    {
+      "name": "EXECUTE JOIN 1000",
+      "endpoint": "/query/execute",
+      "query_shape": "join",
+      "dataset_rows": 1000,
+      "sql": "SELECT p.symbol, p.close, f.metric FROM prices_bench_1000 AS p JOIN fundamentals_bench_1000 AS f ON p.symbol = f.symbol WHERE p.close > 100",
+      "iterations": 20,
+      "row_count": 100,
+      "min_ms": 6.156,
+      "mean_ms": 7.098,
+      "median_ms": 6.93,
+      "p95_ms": 7.581,
+      "max_ms": 9.967,
+      "sample_debug": {
+        "request_id": "de6e9b52-ebcc-4b2e-aef5-303609ec595a",
+        "total_ms": 3.7422000023070723,
+        "stage": "execute",
+        "engine": "datafusion",
+        "features": [
+          "join"
+        ]
+      }
+    },
+    {
+      "name": "EXECUTE FILTER_PROJECT_LIMIT 10000",
+      "endpoint": "/query/execute",
+      "query_shape": "filter_project_limit",
+      "dataset_rows": 10000,
+      "sql": "SELECT symbol, close FROM prices_bench_10000 WHERE close > 100 LIMIT 100",
+      "iterations": 20,
+      "row_count": 100,
+      "min_ms": 6.181,
+      "mean_ms": 7.043,
+      "median_ms": 7.057,
+      "p95_ms": 7.787,
+      "max_ms": 7.857,
+      "sample_debug": {
+        "request_id": "eeac42d5-974c-4aec-aa4f-6427dc030db4",
+        "total_ms": 3.162900000461377,
+        "stage": "execute",
+        "engine": "datafusion",
+        "features": []
+      }
+    },
+    {
+      "name": "EXECUTE AGGREGATE_GROUP_BY 10000",
+      "endpoint": "/query/execute",
+      "query_shape": "aggregate_group_by",
+      "dataset_rows": 10000,
+      "sql": "SELECT symbol, AVG(close) AS avg_close FROM prices_bench_10000 GROUP BY symbol",
+      "iterations": 20,
+      "row_count": 100,
+      "min_ms": 8.553,
+      "mean_ms": 9.265,
+      "median_ms": 9.12,
+      "p95_ms": 10.03,
+      "max_ms": 10.095,
+      "sample_debug": {
+        "request_id": "ddc056be-8f4b-416d-a655-0734cd6e8c24",
+        "total_ms": 5.757300008554012,
+        "stage": "execute",
+        "engine": "datafusion",
+        "features": []
+      }
+    },
+    {
+      "name": "EXECUTE ORDER_BY_LIMIT 10000",
+      "endpoint": "/query/execute",
+      "query_shape": "order_by_limit",
+      "dataset_rows": 10000,
+      "sql": "SELECT symbol, close FROM prices_bench_10000 ORDER BY close DESC LIMIT 100",
+      "iterations": 20,
+      "row_count": 100,
+      "min_ms": 5.975,
+      "mean_ms": 6.53,
+      "median_ms": 6.449,
+      "p95_ms": 7.323,
+      "max_ms": 7.531,
+      "sample_debug": {
+        "request_id": "bd366a77-b504-485c-aa18-bffefe450a20",
+        "total_ms": 3.0918999982532114,
+        "stage": "execute",
+        "engine": "datafusion",
+        "features": []
+      }
+    },
+    {
+      "name": "EXECUTE JOIN 10000",
+      "endpoint": "/query/execute",
+      "query_shape": "join",
+      "dataset_rows": 10000,
+      "sql": "SELECT p.symbol, p.close, f.metric FROM prices_bench_10000 AS p JOIN fundamentals_bench_10000 AS f ON p.symbol = f.symbol WHERE p.close > 100",
+      "iterations": 20,
+      "row_count": 100,
+      "min_ms": 7.002,
+      "mean_ms": 8.225,
+      "median_ms": 8.161,
+      "p95_ms": 9.044,
+      "max_ms": 9.2,
+      "sample_debug": {
+        "request_id": "f7124cfb-b3a6-4217-89e2-ad8fe7b5afc2",
+        "total_ms": 5.285000006551854,
+        "stage": "execute",
+        "engine": "datafusion",
+        "features": [
+          "join"
+        ]
+      }
+    },
+    {
+      "name": "EXECUTE FILTER_PROJECT_LIMIT 100000",
+      "endpoint": "/query/execute",
+      "query_shape": "filter_project_limit",
+      "dataset_rows": 100000,
+      "sql": "SELECT symbol, close FROM prices_bench_100000 WHERE close > 100 LIMIT 100",
+      "iterations": 20,
+      "row_count": 100,
+      "min_ms": 6.208,
+      "mean_ms": 7.108,
+      "median_ms": 6.911,
+      "p95_ms": 7.825,
+      "max_ms": 9.247,
+      "sample_debug": {
+        "request_id": "f1f17029-62cf-4242-82cd-98fea683e9fd",
+        "total_ms": 3.7696999934269115,
+        "stage": "execute",
+        "engine": "datafusion",
+        "features": []
+      }
+    },
+    {
+      "name": "EXECUTE AGGREGATE_GROUP_BY 100000",
+      "endpoint": "/query/execute",
+      "query_shape": "aggregate_group_by",
+      "dataset_rows": 100000,
+      "sql": "SELECT symbol, AVG(close) AS avg_close FROM prices_bench_100000 GROUP BY symbol",
+      "iterations": 20,
+      "row_count": 100,
+      "min_ms": 10.008,
+      "mean_ms": 11.638,
+      "median_ms": 11.249,
+      "p95_ms": 14.26,
+      "max_ms": 15.72,
+      "sample_debug": {
+        "request_id": "5147eeb5-5f3a-49f2-9a7a-bbe43b940b77",
+        "total_ms": 7.423800008837134,
+        "stage": "execute",
+        "engine": "datafusion",
+        "features": []
+      }
+    },
+    {
+      "name": "EXECUTE ORDER_BY_LIMIT 100000",
+      "endpoint": "/query/execute",
+      "query_shape": "order_by_limit",
+      "dataset_rows": 100000,
+      "sql": "SELECT symbol, close FROM prices_bench_100000 ORDER BY close DESC LIMIT 100",
+      "iterations": 20,
+      "row_count": 100,
+      "min_ms": 6.108,
+      "mean_ms": 7.333,
+      "median_ms": 7.322,
+      "p95_ms": 9.18,
+      "max_ms": 9.413,
+      "sample_debug": {
+        "request_id": "d9d51221-9d81-4b43-9c92-19f408ed7cda",
+        "total_ms": 5.05969999358058,
+        "stage": "execute",
+        "engine": "datafusion",
+        "features": []
+      }
+    },
+    {
+      "name": "EXECUTE JOIN 100000",
+      "endpoint": "/query/execute",
+      "query_shape": "join",
+      "dataset_rows": 100000,
+      "sql": "SELECT p.symbol, p.close, f.metric FROM prices_bench_100000 AS p JOIN fundamentals_bench_100000 AS f ON p.symbol = f.symbol WHERE p.close > 100",
+      "iterations": 20,
+      "row_count": 100,
+      "min_ms": 11.628,
+      "mean_ms": 12.423,
+      "median_ms": 12.328,
+      "p95_ms": 13.0,
+      "max_ms": 13.976,
+      "sample_debug": {
+        "request_id": "42bc279a-de70-4e2c-82af-dfccf4eef612",
+        "total_ms": 8.360000007087365,
+        "stage": "execute",
+        "engine": "datafusion",
+        "features": [
+          "join"
+        ]
+      }
+    },
+    {
+      "name": "EXECUTE FILTER_PROJECT_LIMIT 1000000",
+      "endpoint": "/query/execute",
+      "query_shape": "filter_project_limit",
+      "dataset_rows": 1000000,
+      "sql": "SELECT symbol, close FROM prices_bench_1000000 WHERE close > 100 LIMIT 100",
+      "iterations": 20,
+      "row_count": 100,
+      "min_ms": 5.935,
+      "mean_ms": 6.74,
+      "median_ms": 6.683,
+      "p95_ms": 7.426,
+      "max_ms": 7.436,
+      "sample_debug": {
+        "request_id": "9165271c-d1bc-4754-9608-706064348880",
+        "total_ms": 3.4376000112388283,
+        "stage": "execute",
+        "engine": "datafusion",
+        "features": []
+      }
+    },
+    {
+      "name": "EXECUTE AGGREGATE_GROUP_BY 1000000",
+      "endpoint": "/query/execute",
+      "query_shape": "aggregate_group_by",
+      "dataset_rows": 1000000,
+      "sql": "SELECT symbol, AVG(close) AS avg_close FROM prices_bench_1000000 GROUP BY symbol",
+      "iterations": 20,
+      "row_count": 100,
+      "min_ms": 41.742,
+      "mean_ms": 45.863,
+      "median_ms": 45.336,
+      "p95_ms": 50.471,
+      "max_ms": 51.826,
+      "sample_debug": {
+        "request_id": "10da8dab-aa78-42d9-95ce-00d9ba61ebbf",
+        "total_ms": 38.44040000694804,
+        "stage": "execute",
+        "engine": "datafusion",
+        "features": []
+      }
+    },
+    {
+      "name": "EXECUTE ORDER_BY_LIMIT 1000000",
+      "endpoint": "/query/execute",
+      "query_shape": "order_by_limit",
+      "dataset_rows": 1000000,
+      "sql": "SELECT symbol, close FROM prices_bench_1000000 ORDER BY close DESC LIMIT 100",
+      "iterations": 20,
+      "row_count": 100,
+      "min_ms": 8.0,
+      "mean_ms": 8.987,
+      "median_ms": 8.906,
+      "p95_ms": 10.283,
+      "max_ms": 10.502,
+      "sample_debug": {
+        "request_id": "8607efb1-1e7d-4949-8361-b0759882fa8f",
+        "total_ms": 5.589200009126216,
+        "stage": "execute",
+        "engine": "datafusion",
+        "features": []
+      }
+    },
+    {
+      "name": "EXECUTE JOIN 1000000",
+      "endpoint": "/query/execute",
+      "query_shape": "join",
+      "dataset_rows": 1000000,
+      "sql": "SELECT p.symbol, p.close, f.metric FROM prices_bench_1000000 AS p JOIN fundamentals_bench_1000000 AS f ON p.symbol = f.symbol WHERE p.close > 100",
+      "iterations": 20,
+      "row_count": 100,
+      "min_ms": 41.449,
+      "mean_ms": 45.247,
+      "median_ms": 44.611,
+      "p95_ms": 50.246,
+      "max_ms": 52.825,
+      "sample_debug": {
+        "request_id": "1e23d4f0-adec-469b-b726-bcbbefcf916a",
+        "total_ms": 38.97119998873677,
+        "stage": "execute",
+        "engine": "datafusion",
+        "features": [
+          "join"
+        ]
+      }
+    }
+  ]
+}

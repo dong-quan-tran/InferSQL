@@ -1,0 +1,17 @@
+run_id,name,endpoint,query_shape,dataset_rows,sql,iterations,row_count,min_ms,mean_ms,median_ms,p95_ms,max_ms
+20260625T221025Z,EXECUTE FILTER_PROJECT_LIMIT 1000,/query/execute,filter_project_limit,1000,"SELECT symbol, close FROM prices_bench_1000 WHERE close > 100 LIMIT 100",20,100,5.97,7.061,6.882,8.197,9.822
+20260625T221025Z,EXECUTE AGGREGATE_GROUP_BY 1000,/query/execute,aggregate_group_by,1000,"SELECT symbol, AVG(close) AS avg_close FROM prices_bench_1000 GROUP BY symbol",20,100,7.454,9.567,8.314,11.011,32.606
+20260625T221025Z,EXECUTE ORDER_BY_LIMIT 1000,/query/execute,order_by_limit,1000,"SELECT symbol, close FROM prices_bench_1000 ORDER BY close DESC LIMIT 100",20,100,5.435,6.544,6.632,7.252,7.746
+20260625T221025Z,EXECUTE JOIN 1000,/query/execute,join,1000,"SELECT p.symbol, p.close, f.metric FROM prices_bench_1000 AS p JOIN fundamentals_bench_1000 AS f ON p.symbol = f.symbol WHERE p.close > 100",20,100,6.156,7.098,6.93,7.581,9.967
+20260625T221025Z,EXECUTE FILTER_PROJECT_LIMIT 10000,/query/execute,filter_project_limit,10000,"SELECT symbol, close FROM prices_bench_10000 WHERE close > 100 LIMIT 100",20,100,6.181,7.043,7.057,7.787,7.857
+20260625T221025Z,EXECUTE AGGREGATE_GROUP_BY 10000,/query/execute,aggregate_group_by,10000,"SELECT symbol, AVG(close) AS avg_close FROM prices_bench_10000 GROUP BY symbol",20,100,8.553,9.265,9.12,10.03,10.095
+20260625T221025Z,EXECUTE ORDER_BY_LIMIT 10000,/query/execute,order_by_limit,10000,"SELECT symbol, close FROM prices_bench_10000 ORDER BY close DESC LIMIT 100",20,100,5.975,6.53,6.449,7.323,7.531
+20260625T221025Z,EXECUTE JOIN 10000,/query/execute,join,10000,"SELECT p.symbol, p.close, f.metric FROM prices_bench_10000 AS p JOIN fundamentals_bench_10000 AS f ON p.symbol = f.symbol WHERE p.close > 100",20,100,7.002,8.225,8.161,9.044,9.2
+20260625T221025Z,EXECUTE FILTER_PROJECT_LIMIT 100000,/query/execute,filter_project_limit,100000,"SELECT symbol, close FROM prices_bench_100000 WHERE close > 100 LIMIT 100",20,100,6.208,7.108,6.911,7.825,9.247
+20260625T221025Z,EXECUTE AGGREGATE_GROUP_BY 100000,/query/execute,aggregate_group_by,100000,"SELECT symbol, AVG(close) AS avg_close FROM prices_bench_100000 GROUP BY symbol",20,100,10.008,11.638,11.249,14.26,15.72
+20260625T221025Z,EXECUTE ORDER_BY_LIMIT 100000,/query/execute,order_by_limit,100000,"SELECT symbol, close FROM prices_bench_100000 ORDER BY close DESC LIMIT 100",20,100,6.108,7.333,7.322,9.18,9.413
+20260625T221025Z,EXECUTE JOIN 100000,/query/execute,join,100000,"SELECT p.symbol, p.close, f.metric FROM prices_bench_100000 AS p JOIN fundamentals_bench_100000 AS f ON p.symbol = f.symbol WHERE p.close > 100",20,100,11.628,12.423,12.328,13.0,13.976
+20260625T221025Z,EXECUTE FILTER_PROJECT_LIMIT 1000000,/query/execute,filter_project_limit,1000000,"SELECT symbol, close FROM prices_bench_1000000 WHERE close > 100 LIMIT 100",20,100,5.935,6.74,6.683,7.426,7.436
+20260625T221025Z,EXECUTE AGGREGATE_GROUP_BY 1000000,/query/execute,aggregate_group_by,1000000,"SELECT symbol, AVG(close) AS avg_close FROM prices_bench_1000000 GROUP BY symbol",20,100,41.742,45.863,45.336,50.471,51.826
+20260625T221025Z,EXECUTE ORDER_BY_LIMIT 1000000,/query/execute,order_by_limit,1000000,"SELECT symbol, close FROM prices_bench_1000000 ORDER BY close DESC LIMIT 100",20,100,8.0,8.987,8.906,10.283,10.502
+20260625T221025Z,EXECUTE JOIN 1000000,/query/execute,join,1000000,"SELECT p.symbol, p.close, f.metric FROM prices_bench_1000000 AS p JOIN fundamentals_bench_1000000 AS f ON p.symbol = f.symbol WHERE p.close > 100",20,100,41.449,45.247,44.611,50.246,52.825

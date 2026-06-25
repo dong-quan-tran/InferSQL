@@ -510,3 +510,77 @@ To run the live copilot eval script (Ollama-only by default):
 COPILOT_LLM_PROVIDER=ollama OLLAMA_MODEL=llama3.1 \
 python scripts/run_copilot_live_eval.py
 ```
+
+## Performance benchmarks (Phase 12)
+
+Phase 12 adds a small, repeatable performance harness that exercises `/query/execute` against synthetic Arrow tables registered in the in-memory dataset registry.
+
+- The benchmark script lives at `scripts/benchmark_queries.py`.
+- It seeds four synthetic benchmark datasets into the live registry (in-memory only):
+
+  - `prices_bench_1000`
+  - `prices_bench_10000`
+  - `prices_bench_100000`
+  - `prices_bench_1000000`
+
+- Each `prices_bench_*` table has:
+
+  - `symbol` (string): synthetic stock symbol (e.g. `SYM000001`),
+  - `close` (float): synthetic closing price.
+
+- Each `fundamentals_bench_*` table has:
+
+  - `symbol` (string): synthetic stock symbol,
+  - `metric` (float): synthetic metric value.
+
+The script runs the following query shapes against each row size:
+
+- `filter_project_limit`:
+  - `SELECT symbol, close FROM prices_bench_* WHERE close > 100 LIMIT 100`
+- `aggregate_group_by`:
+  - `SELECT symbol, AVG(close) AS avg_close FROM prices_bench_* GROUP BY symbol`
+- `order_by_limit`:
+  - `SELECT symbol, close FROM prices_bench_* ORDER BY close DESC LIMIT 100`
+- `join`:
+  - `SELECT p.symbol, p.close, f.metric FROM prices_bench_* AS p JOIN fundamentals_bench_* AS f ON p.symbol = f.symbol WHERE p.close > 100`
+
+Each workload is executed multiple times against the ASGI app in-process, using the same dataset registry instance that was seeded at runtime.
+
+### Running the benchmark
+
+From an activated virtual environment with dependencies installed:
+
+```bash
+python scripts/benchmark_queries.py
+```
+
+The script:
+
+- wraps the FastAPI app in a lifespan-aware context so startup/shutdown hooks run and populate `app.state` services,
+- seeds the synthetic benchmark datasets into the in-memory registry,
+- runs all workloads against `/query/execute?debug=true`,
+- records per-iteration latency and summary statistics,
+- writes results into `benchmark_results/`.
+
+Artifacts include:
+
+- `benchmark_results/benchmark_summary_<RUN_ID>.json`:
+  - run metadata (Python version, platform, commit, etc.),
+  - one summary object per workload (query shape, row count, SQL, min/mean/median/p95/max latency, sample row count).
+- `benchmark_results/benchmark_summary_<RUN_ID>.csv`:
+  - tabular summary suitable for spreadsheets.
+- `benchmark_results/benchmark_iterations_<RUN_ID>.csv`:
+  - per-iteration latency records for detailed analysis.
+
+To establish or update a local baseline, you can copy a specific run’s summary files to stable names, for example:
+
+```bash
+copy benchmark_results\benchmark_summary_<RUN_ID>.json benchmark_results\benchmark_summary_phase12_baseline.json
+copy benchmark_results\benchmark_summary_<RUN_ID>.csv  benchmark_results\benchmark_summary_phase12_baseline.csv
+```
+
+Future performance work should:
+
+- keep using this script as the canonical latency harness for `/query/execute`,
+- extend it with additional workloads only when they are representative and stable,
+- document any new workloads or dataset shapes here.
