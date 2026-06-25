@@ -1,6 +1,5 @@
 # InferSQL Development
 
-
 ## Local setup
 
 ```bash
@@ -24,17 +23,17 @@ All broad-SQL work should land with tests. The full suite includes:
 
 ## Migration status
 
-InferSQL has migrated from a custom narrow SQL path to a hybrid architecture centered on Apache DataFusion.[web:65][web:317]
+InferSQL has migrated from a custom narrow SQL path to a hybrid architecture centered on Apache DataFusion.
 
 Current state:
 
-- `/query/execute` is DataFusion-backed for production query execution across the supported SQL surface.[web:65][web:321]
+- `/query/execute` is DataFusion-backed for production query execution across the supported SQL surface.
 - `/query/plan` is hybrid:
   - simple single-table queries may still use the legacy custom planner,
-  - broader SQL shapes such as joins, subqueries, and set operations are planned through DataFusion.[web:65][web:317]
+  - broader SQL shapes such as joins, subqueries, and set operations are planned through DataFusion.
 - `/query/validate` remains product-owned:
   - it uses SQLGlot plus registry metadata for schema checks and guardrails,
-  - it is not the final source of semantic SQL truth.[web:352][web:394]
+  - it is not the final source of semantic SQL truth.
 - The original custom engine remains as a narrow planning/reference layer; it is no longer the primary execution engine.
 
 Practical meaning:
@@ -44,7 +43,7 @@ Practical meaning:
 
 ## Current SQL surface (developer view)
 
-InferSQL currently supports a **broad but explicit analytical SQL subset** over registered datasets.[web:65][web:317] DataFusion provides the underlying execution and planning engine; InferSQL exposes the subset that is tested and integrated with product validation.[web:320][web:321]
+InferSQL currently supports a **broad but explicit analytical SQL subset** over registered datasets. DataFusion provides the underlying execution and planning engine; InferSQL exposes the subset that is tested and integrated with product validation.
 
 This file is the ground truth for what is **actually supported and tested**.
 
@@ -147,7 +146,7 @@ Newly ingested datasets are immediately queryable via `/query/execute` once they
 - Set operations:
   - `UNION`,
   - `UNION ALL`,
-  - column-count and type compatibility enforced by the engine.[web:393][web:396]
+  - column-count and type compatibility enforced by the engine.
 - Projection:
   - plain column projection,
   - projection aliases,
@@ -189,8 +188,8 @@ DataFusion is responsible for:
   - `HAVING`,
   - subqueries,
   - set operations,
-  - expression legality,[web:393][web:396]
-- query planning and execution correctness.[web:65][web:320][web:321]
+  - expression legality,
+- query planning and execution correctness.
 
 The rule of thumb:
 
@@ -205,7 +204,7 @@ The rule of thumb:
 
 `POST /query/validate`:
 
-- Accepts a JSON body with `sql` and optional options.
+- Accepts a JSON body with `sql`.
 - Returns:
 
   ```json
@@ -246,7 +245,7 @@ The rule of thumb:
 
 - For broader SQL (joins, subqueries, unions):
 
-  - delegates to DataFusion planning and explain output to obtain logical and physical plans,[web:317][web:320]
+  - delegates to DataFusion planning and explain output to obtain logical and physical plans,
   - wraps those plans into:
 
     ```json
@@ -281,7 +280,7 @@ The rule of thumb:
 
 `POST /query/execute`:
 
-- Applies the same product-level schema and guardrail validation used by `/query/validate`, then executes via DataFusion.[web:65][web:321]
+- Applies the same product-level schema and guardrail validation used by `/query/validate`, then executes via DataFusion.
 - Returns:
 
   ```json
@@ -347,8 +346,7 @@ Errors are normalized into a structured shape:
     "debug": {
       "stage": "execute",
       "engine": "datafusion",
-      "error_origin": "engine_execution",
-      "features": []
+      "error_origin": "engine_execution"
     }
   }
 }
@@ -360,7 +358,7 @@ The mapping is:
 - unknown table or dataset → `UnknownDatasetError` (typically 404),
 - unknown column → `UnknownColumnError` (400),
 - unsupported semantics or ambiguous references → `UnsupportedQueryError` (currently treated as a client error where normalized),
-- unexpected internal engine failures → 5xx internal error responses.
+- unexpected internal engine failures → 5xx internal error responses via `InternalServerError`.
 
 ### What is explicitly not supported (yet)
 
@@ -375,7 +373,7 @@ The following are **not** supported today and should be rejected or documented a
 - Advanced engine features like:
   - cost-based optimization,
   - user-defined functions (unless explicitly wired),
-  - advanced statistics-based planning.[web:396][web:337]
+  - advanced statistics-based planning.
 
 If you are unsure whether a feature is supported:
 
@@ -395,7 +393,7 @@ If you are unsure whether a feature is supported:
 
 ## Copilot and eval harness
 
-InferSQL includes a small, self-contained copilot layer that generates SQL candidates from natural language questions over the registered datasets. The copilot flow is fully test-backed and designed to support multiple LLM providers without hard-wiring to any specific API.[web:723][web:726]
+InferSQL includes a small, self-contained copilot layer that generates SQL candidates from natural language questions over the registered datasets. The copilot flow is fully test-backed and designed to support multiple LLM providers without hard-wiring to any specific API.
 
 ### Copilot architecture (developer view)
 
@@ -404,22 +402,22 @@ InferSQL includes a small, self-contained copilot layer that generates SQL candi
   - calls an `LLMProvider` to generate a `CopilotSqlCandidate`,
   - validates the candidate via the query service (`/query/validate` behavior),
   - optionally executes the candidate via the query service (`/query/execute` behavior),
-  - returns a structured result with validation, execution (optional), and candidate metadata.[web:726]
+  - returns a structured result with validation, execution (optional), and candidate metadata.
 - `LLMProvider` is the common interface for all LLM backends. Concrete implementations live in `app.services.llm.*`:
   - `OllamaLLMProvider` is the default local provider and has no paid dependencies.
   - `GeminiLLMProvider` and `OpenAILLMProvider` are optional:
     - they use lazy imports (`google-genai`, `openai`) inside `__init__`,
-    - they are only required if you choose those providers and install the corresponding SDKs.[web:723]
+    - they are only required if you choose those providers and install the corresponding SDKs.
 - `build_llm_provider` in `app.services.llm.factory` centralizes provider selection:
   - reads a provider name (e.g. `ollama`, `gemini`, `openai`, `auto`),
   - constructs the appropriate provider with configuration such as base URL, model name, and temperature,
-  - wraps primary providers in a `FallbackLLMProvider` so Ollama is always available as a fallback when configured.[web:723]
+  - wraps primary providers in a `FallbackLLMProvider` so Ollama is always available as a fallback when configured.
 
-This provider abstraction means you can add or switch LLM backends without changing `CopilotService` or the rest of the API layer; only the factory configuration and dependencies need to change.[web:723]
+This provider abstraction means you can add or switch LLM backends without changing `CopilotService` or the rest of the API layer; only the factory configuration and dependencies need to change.
 
 ### Copilot prompts
 
-Copilot uses a prompt builder that is explicitly aligned with the tested broad SQL surface and structured-output requirements:[web:716][web:723]
+Copilot uses a prompt builder that is explicitly aligned with the tested broad SQL surface and structured-output requirements:
 
 - `build_system_prompt`:
   - instructs the model to:
@@ -437,13 +435,13 @@ Copilot uses a prompt builder that is explicitly aligned with the tested broad S
     - use joins only when necessary and with explicit join conditions grounded in the schema,
     - use grouped aggregates and `HAVING` when appropriate,
     - use subqueries (`IN`, scalar, derived tables) when needed,
-    - repair schema mismatches and ambiguity via explicit `assumptions` rather than silent changes.[web:704][web:716]
+    - repair schema mismatches and ambiguity via explicit `assumptions` rather than silent changes.
 
-Together, these prompts enforce a structured-output contract for Copilot and make the behavior match the eval harness’s expectations.[web:704][web:726]
+Together, these prompts enforce a structured-output contract for Copilot and make the behavior match the eval harness’s expectations.
 
 ### Copilot evals (Phase 9)
 
-Phase 9 migrated Copilot from a narrow, single-table world to a tested **broad SQL** surface aligned with the DataFusion-backed architecture:[web:719][web:725]
+Phase 9 migrated Copilot from a narrow, single-table world to a tested **broad SQL** surface aligned with the DataFusion-backed architecture:
 
 - The eval harness now covers:
   - simple single-table projections and filters,
@@ -451,7 +449,7 @@ Phase 9 migrated Copilot from a narrow, single-table world to a tested **broad S
   - hallucinated datasets/columns and unsupported features,
   - aggregate queries with `COUNT`/`AVG` and `HAVING` on grouped results,
   - successful joins between `prices` and `fundamentals`,
-  - successful subqueries over the richer registry (e.g. `IN (SELECT symbol FROM fundamentals)`, scalar subqueries for overall aggregates).[web:719][web:725][web:728]
+  - successful subqueries over the richer registry (e.g. `IN (SELECT symbol FROM fundamentals)`, scalar subqueries for overall aggregates).
 - Eval cases are grouped into categories such as:
   - `simple_select`,
   - `synonym`,
@@ -460,7 +458,7 @@ Phase 9 migrated Copilot from a narrow, single-table world to a tested **broad S
   - `ambiguous`,
   - `aggregate`,
   - `join`,
-  - `subquery`.[web:719][web:725]
+  - `subquery`.
 
 Copilot behavior is covered by a dedicated eval harness and two entry points:
 
@@ -472,15 +470,15 @@ Copilot behavior is covered by a dedicated eval harness and two entry points:
       - valid single-table queries on the `prices` dataset,
       - joins and aggregates that are expected to succeed,
       - unknown datasets (`trades`), unknown columns (`ticker`, `price`, `sector`), and unsupported semantics,
-    - returns a validation shape compatible with `/query/validate` and `/query/execute`.[web:719][web:725]
+    - returns a validation shape compatible with `/query/validate` and `/query/execute`.
   - loads eval cases from `tests/fixtures/copilot_eval_cases.json`. Each case defines:
     - an `id` and `category`,
     - a natural-language `question`,
     - whether execution should be attempted (`execute`),
-    - expectations for validity, columns, row counts, SQL fragments, error messages, and assumptions.[web:719]
+    - expectations for validity, columns, row counts, SQL fragments, error messages, and assumptions.
   - includes:
     - a parametrized test that asserts each case individually, and
-    - a suite summary test that builds category-level metrics and enforces minimum pass-rate thresholds, including 100% for critical categories like `simple_select`, `hallucination`, `unsupported_feature`, and `join`.[web:722][web:725]
+    - a suite summary test that builds category-level metrics and enforces minimum pass-rate thresholds, including 100% for critical categories like `simple_select`, `hallucination`, `unsupported_feature`, and `join`.
 - `scripts/run_copilot_live_eval.py`:
   - runs the same `CopilotService` flow against a real `LLMProvider` (typically Ollama in local development),
   - uses Arrow-backed `prices` and `fundamentals` tables registered through `DatasetRegistry`,
@@ -489,10 +487,10 @@ Copilot behavior is covered by a dedicated eval harness and two entry points:
     - provider name and model,
     - overall pass rate,
     - per-category pass rates,
-    - details for failing cases (question, generated SQL, assumptions, validation errors).[web:720][web:726]
-  - enforces configurable thresholds so you can fail a CI job or local check if regressions occur.[web:721][web:726]
+    - details for failing cases (question, generated SQL, assumptions, validation errors).
+  - enforces configurable thresholds so you can fail a CI job or local check if regressions occur.
 
-As you broaden the SQL surface area that Copilot should reliably handle beyond Phase 9, the workflow is:[web:719][web:722][web:731]
+As you broaden the SQL surface area that Copilot should reliably handle beyond Phase 9, the workflow is:
 
 1. Add new eval cases (and extend `EvalQueryService` where needed) to cover the desired behavior.
 2. Tune prompts or providers until the eval suite and live eval both pass at the desired thresholds.
