@@ -1,106 +1,148 @@
-# InferSQL Blueprint (DataFusion-backed)
+# InferSQL Blueprint
 
 ## Current positioning
 
-InferSQL is still being built as a unified AI data plane, but the implementation is now centered around a DataFusion-backed analytical engine wrapped in a product-specific API, validation, and copilot layer.
+InferSQL is being built as a backend platform for analytical SQL, dataset-aware validation, and guarded SQL copilot workflows.
 
-The backend exposes a stable HTTP contract (`/query/validate`, `/query/plan`, `/query/execute`) backed by:
+The current platform is centered on a **DataFusion-backed query engine** with product-owned layers around it:
 
-- Apache Arrow datasets.
-- Apache DataFusion as the primary execution engine.
-- SQLGlot parsing and summarization.
-- Schema-aware, product-level validation.
-- Structured error normalization and minimal observability.
+- a FastAPI HTTP API,
+- an in-memory dataset registry,
+- SQLGlot-based parsing and query summarization,
+- product-level validation and guardrails,
+- normalized error handling,
+- a small copilot layer for NL-to-SQL generation and evaluation.
 
-This blueprint keeps the original ambition while aligning the roadmap with the system that exists today.
+This blueprint reflects the system that exists today, not the original narrower custom-engine-first design.
 
-## Product definition (current focus)
+## What InferSQL is today
 
-InferSQL is a backend platform that will eventually unify four capabilities:
+Today, InferSQL is primarily a query platform over registered Arrow-backed datasets.
 
-1. A vectorized analytical query engine.
-2. A low-latency feature serving and model inference layer.
-3. A safe LLM copilot for SQL and platform operations.
-4. A production-style observability stack.
+It currently provides:
 
-Today, the focus is on (1) with a thin slice of (3) for SQL copilot behavior. Work on (2) and (4) will only proceed once the query-engine core is stable.
+1. A query API with validate, plan, and execute endpoints.
+2. A registry-backed metadata layer that controls what datasets are queryable.
+3. A hybrid planning model:
+   - legacy custom planning for some simple single-table queries,
+   - DataFusion-backed planning for broader SQL shapes.
+4. DataFusion-backed execution for the tested SQL surface.
+5. A guarded copilot flow that generates SQL against the registered schema context.
 
-## Current implemented foundation
+It does **not** yet represent a complete feature store, inference runtime, or production observability stack. Those remain later platform layers.
 
-### Query API
+## Platform definition
 
-The backend exposes three core endpoints:
+InferSQL is evolving toward a unified AI data plane, but the current practical platform is:
+
+- an analytical SQL backend over registered datasets,
+- a schema-aware validation and error-normalization layer,
+- a copilot layer that uses the same registry and query service contracts,
+- a foundation for future ingestion, observability, and feature-serving work.
+
+The architectural rule is simple:
+
+- the query engine is the spine,
+- registry metadata is the source of truth,
+- copilot and future platform features must build on those shared contracts.
+
+## Current implemented architecture
+
+### Query API layer
+
+The backend currently exposes these core endpoints:
 
 - `POST /query/validate`
 - `POST /query/plan`
 - `POST /query/execute`
 
-These share a consistent validation and error model, and they all operate over the same registered datasets.
+It also exposes dataset catalog and ingestion endpoints around the registry:
 
-### Query lifecycle
+- `GET /catalog/datasets`
+- `GET /catalog/datasets/{name}`
+- `POST /catalog/ingest`
+- `POST /catalog/upload`
 
-The request flow currently supports:
+These APIs operate over the same registered datasets and share the same application state.
 
-1. SQL ingestion through FastAPI.
-2. SQL parsing and summarization through SQLGlot.
-3. Product-specific validation (statement type, datasets, columns, guardrails).
-4. Either:
-   - Custom logical/physical planning for simple single-table queries, or
-   - DataFusion-backed planning for broader SQL.
-5. Execution against Arrow-backed data via DataFusion.
-6. Structured JSON responses including normalized errors and optional debug metadata.
+### Runtime flow
 
-### Current SQL surface (high-level)
+The current request lifecycle is:
 
-Broadly, InferSQL now supports:
+1. FastAPI receives the request.
+2. Lifespan startup initializes shared application services on `app.state`.
+3. SQLGlot parses SQL for product-owned validation and query shape inspection.
+4. The dataset registry is consulted for dataset existence and schema metadata.
+5. Product validation applies:
+   - `SELECT`-only enforcement,
+   - dataset existence checks,
+   - column existence checks,
+   - ambiguity checks,
+   - limited guardrails.
+6. Planning and execution proceed through one of two paths:
+   - legacy custom planner for some simple `/query/plan` cases,
+   - DataFusion-backed planning and execution for broad SQL.
+7. Responses are normalized into stable API contracts with optional debug metadata.
 
-- Analytical `SELECT` queries over registered datasets.
-- Single-table and multi-table queries.
-- Joins.
-- Subqueries (including subquery-in-FROM).
-- Set operations such as `UNION` / `UNION ALL`, with shape validation.
-- `ORDER BY` and `LIMIT`.
-- Basic grouped aggregates (with stricter rules where enforced by the product).
-- A subset of expressions in `SELECT`, `WHERE`, and `ORDER BY`.
+### Core services
 
-The exact tested surface is documented in `development.md` and is intentionally narrower than full ANSI SQL. DataFusion provides a much larger SQL surface; InferSQL exposes the subset that is tested and behaves well in the current product [web:26][web:243][web:16].
+The live platform currently depends on the following application-level components:
 
-## Updated architecture
+- `DatasetRegistry`
+- `QueryParser`
+- `PhysicalPlanner`
+- `QueryCompiler`
+- `QueryRunner`
+- `QueryService`
+- `CopilotService`
+- `LLMProvider`
 
-### Phase 1 architecture: implemented core
+These are initialized during FastAPI lifespan startup and attached to `app.state` for dependency injection.
+
+## Architecture overview
+
+### Current architecture
 
 ```text
 Client
   │
   ▼
-FastAPI Query API
+FastAPI API Layer
   │
-  ├── /query/validate
-  ├── /query/plan
-  └── /query/execute
+  ├── Query endpoints
+  │   ├── /query/validate
+  │   ├── /query/plan
+  │   └── /query/execute
+  │
+  ├── Catalog endpoints
+  │   ├── /catalog/datasets
+  │   ├── /catalog/datasets/{name}
+  │   ├── /catalog/ingest
+  │   └── /catalog/upload
   │
   ▼
-QueryService
+Application services
   │
   ├── DatasetRegistry
   ├── QueryParser (SQLGlot)
-  ├── QueryCompiler (narrow logical/physical plans)
-  ├── DataFusionRunner (broad execution/planning)
-  └── QueryRunner (legacy, narrow)
+  ├── QueryService
+  ├── QueryCompiler
+  ├── QueryRunner
+  ├── PhysicalPlanner
+  ├── CopilotService
+  └── LLMProvider
   │
   ▼
-Arrow-backed datasets registered in DatasetRegistry
+Execution / planning layer
+  │
+  ├── Legacy custom planner path for narrow simple planning cases
+  └── DataFusion-backed planning and execution for broad SQL
+  │
+  ▼
+Arrow-backed registered datasets
 ```
 
-Key facts:
-
-- `/query/execute` routes through DataFusion for execution.
-- `/query/plan` uses:
-  - the custom planner for simple queries, and
-  - DataFusion EXPLAIN for broad queries (joins, subqueries, set operations).
-- The registry remains the source of truth for table and column metadata.
-
-### Phase 2 architecture: near-term target
+### Near-term architecture target
 
 ```text
 Client
@@ -109,202 +151,301 @@ Client
 FastAPI API Layer
   │
   ├── Query API
-  ├── Dataset API
-  └── Debug/Schema API
+  ├── Catalog / ingestion API
+  ├── Copilot API
+  └── Debug / schema inspection API
   │
   ▼
-QueryService
+Shared platform services
   │
-  ├── Catalog + DatasetLoader (CSV/Parquet)
-  ├── Parser + Validator (SQLGlot-based)
-  ├── Logical Planner (custom for simple queries)
-  ├── DataFusion Planner/EXPLAIN for broad queries
-  ├── DataFusion-backed Execution
-  ├── Copilot Schema Context + Prompts
-  └── Benchmarks + Instrumentation
+  ├── Registry + schema metadata
+  ├── Parser + validator
+  ├── DataFusion-backed planner / executor
+  ├── Copilot schema context + prompts
+  ├── Benchmark harness
+  └── Logging / debug metadata / tracing hooks
   │
   ▼
-Arrow / Parquet / CSV datasets
+Arrow / CSV / Parquet datasets
 ```
 
-The near-term focus is:
-
-- CSV/Parquet ingestion wired into the registry and DataFusion.
-- Schema alignment between registry, copilot, and engine.
-- Documented and observable query lifecycle.
-
-### Phase 3 architecture: expanded platform target
+### Longer-term platform target
 
 ```text
 ┌─────────────────────────────────────────────────────┐
-│                   CONTROL PLANE                     │
-│  Model Registry · Deployment Manager · Config       │
+│                    CONTROL PLANE                    │
+│   Config · Model Registry · Deployment Workflows    │
 └───────────────────┬─────────────────────────────────┘
                     │
 ┌───────────────────▼─────────────────────────────────┐
 │                      DATA PLANE                     │
 │                                                     │
-│  Query Engine → Feature Store → Inference Runtime   │
+│   Query Engine → Feature Services → Inference       │
 └───────────────────┬─────────────────────────────────┘
                     │
 ┌───────────────────▼─────────────────────────────────┐
 │                    COPILOT LAYER                    │
-│  NL→SQL · Plan Explainer · Ops Assistant            │
+│     NL→SQL · Query Explainability · Ops Assistant   │
 └───────────────────┬─────────────────────────────────┘
                     │
 ┌───────────────────▼─────────────────────────────────┐
-│                 OBSERVABILITY STACK                 │
-│  OTel · Prometheus · Grafana · Logs · Traces        │
+│                 OBSERVABILITY LAYER                 │
+│      Logs · Metrics · Traces · Benchmarking         │
 └─────────────────────────────────────────────────────┘
 ```
 
-This remains the long-term direction; current work is focused on stabilizing the `Query Engine` and the initial `Copilot` slice.
+This remains the long-term direction, but the active engineering focus is still the query engine core plus the first copilot slice.
 
-## Revised repository blueprint
+## SQL engine model
 
-The repository structure is still:
+InferSQL is no longer a narrow custom execution engine.
+
+The real model today is:
+
+- DataFusion is the primary execution engine.
+- DataFusion is also the planning source for broader SQL in `/query/plan`.
+- the custom engine remains as a limited planning/reference path for some simple cases.
+- product validation remains outside the engine and is intentionally narrower than full SQL semantics.
+
+This separation matters:
+
+- `/query/validate` is a precheck and policy layer,
+- `/query/plan` is hybrid,
+- `/query/execute` is the source of truth for tested query behavior.
+
+## SQL surface and product boundaries
+
+InferSQL supports a broad but explicit analytical SQL subset over registered datasets.
+
+At a high level, the tested surface includes:
+
+- `SELECT` queries only,
+- single-table and multi-table queries,
+- joins,
+- subqueries,
+- set operations such as `UNION` and `UNION ALL`,
+- grouped aggregates and `HAVING`,
+- `ORDER BY`,
+- `LIMIT`,
+- tested expressions in projection and filters.
+
+The exact contract should be treated as the one documented in `development.md`.
+
+Two important product boundaries apply:
+
+1. InferSQL does **not** claim full ANSI SQL support.
+2. InferSQL only claims support for behavior that is tested and documented.
+
+## Validation and engine responsibilities
+
+The platform intentionally splits responsibility between product validation and engine semantics.
+
+### Product-owned responsibilities
+
+The validation layer is responsible for:
+
+- enforcing `SELECT`-only behavior,
+- checking whether referenced datasets exist,
+- checking whether referenced columns exist,
+- detecting some ambiguous multi-table column references,
+- applying a limited set of product guardrails,
+- shaping stable API validation responses.
+
+### Engine-owned responsibilities
+
+DataFusion is responsible for:
+
+- semantic SQL correctness,
+- grouped aggregate legality,
+- join semantics,
+- subquery semantics,
+- set-operation behavior,
+- execution correctness,
+- broad planning behavior.
+
+This means a query can pass `/query/validate` and still fail `/query/execute` if the engine rejects its semantics.
+
+## Dataset model
+
+The dataset registry is the source of truth for queryable datasets.
+
+A dataset becomes queryable only after it is registered in the registry. The registry owns:
+
+- dataset names,
+- Arrow tables,
+- column names,
+- column types,
+- optional dataset descriptions,
+- optional column descriptions,
+- source metadata such as `source_path`,
+- load metadata such as `loaded_at`.
+
+Current implications:
+
+- if a dataset is not registered, it is not queryable,
+- if a column is not in the registry schema, it is unknown to product validation,
+- catalog APIs serialize registry-backed metadata,
+- ingestion APIs ultimately register Arrow tables into the registry.
+
+The current registry is in-memory within the running process. That is sufficient for local development and tests, but it is not yet a persistence layer.
+
+## Ingestion model
+
+InferSQL now includes a basic ingestion path for local datasets.
+
+Current ingestion scope:
+
+- CSV ingestion,
+- Parquet ingestion,
+- registration into the in-memory dataset registry,
+- immediate availability to query execution after registration.
+
+This is an important step toward the target platform, but ingestion is still early-stage. It is not yet a full dataset management system with persistence, versioning, lineage, or storage abstraction.
+
+## Copilot model
+
+InferSQL includes a small copilot layer designed around the live schema and query contracts.
+
+The current copilot flow is:
+
+1. build schema context from the dataset registry,
+2. prompt an `LLMProvider` for a structured SQL candidate,
+3. validate that candidate through the query service,
+4. optionally execute it through the same query path,
+5. return structured candidate, validation, and execution output.
+
+The important architectural decision is that copilot does **not** bypass the query platform. It depends on the same registry, validation, and execution contracts as other product surfaces.
+
+This keeps copilot grounded in the real platform rather than inventing a separate SQL capability model.
+
+## Observability status
+
+Observability exists today in a limited but useful form.
+
+Current implemented pieces include:
+
+- request-scoped logging,
+- structured error normalization,
+- debug metadata on validate, plan, and execute endpoints,
+- timing information via `debug=true`,
+- a local benchmark harness for `/query/execute`.
+
+Observability is still incomplete.
+
+Still in progress or still future-facing:
+
+- deeper OpenTelemetry coverage,
+- production metrics and dashboards,
+- richer tracing across parse / validate / plan / execute stages,
+- persistent benchmark tracking,
+- operational alerts and SLOs.
+
+## Benchmarking status
+
+A local benchmark harness now exists for the query engine.
+
+Current benchmark scope:
+
+- in-process benchmarking through the ASGI app,
+- synthetic Arrow-backed benchmark datasets,
+- multiple row sizes,
+- representative query shapes including filter, aggregate, order-by, and join,
+- JSON and CSV benchmark artifacts.
+
+This benchmark layer is intended to provide a repeatable local baseline for `/query/execute`, not a final production performance program.
+
+## Repository blueprint
+
+The repository today is organized around the current backend platform:
 
 ```text
 backend/
 ├── app/
 │   ├── api/
-│   │   └── query.py
+│   │   ├── dependencies.py
+│   │   ├── query.py
+│   │   └── ...
 │   ├── core/
 │   │   ├── catalog/
 │   │   │   └── registry.py
 │   │   ├── engine/
-│   │   │   └── parser.py
+│   │   │   ├── parser.py
+│   │   │   ├── physical_planner.py
+│   │   │   └── ...
 │   │   ├── error_handlers.py
-│   │   ├── middleware.py
 │   │   ├── lifespan.py
+│   │   ├── middleware.py
 │   │   └── settings.py
 │   ├── schemas/
-│   │   └── query.py
 │   └── services/
-│       ├── query_service.py
+│       ├── copilot_service.py
 │       ├── query_compiler.py
-│       └── query_runner.py
+│       ├── query_runner.py
+│       ├── query_service.py
+│       └── llm/
+├── scripts/
 ├── tests/
-├── docs/
-└── pyproject.toml
+└── ...
 ```
 
-Future expansion still leaves room for:
+The structure should continue to evolve around shared services rather than separate feature silos.
 
-```text
-backend/
-├── app/
-│   ├── api/
-│   │   ├── query.py
-│   │   ├── datasets.py
-│   │   ├── models.py
-│   │   ├── deployments.py
-│   │   └── features.py
-│   ├── core/
-│   │   ├── catalog/
-│   │   ├── engine/
-│   │   │   ├── parser.py
-│   │   │   ├── planner.py
-│   │   │   ├── operators/
-│   │   │   └── optimizer.py
-│   │   ├── feature_store/
-│   │   ├── inference/
-│   │   └── observability/
-│   ├── copilot/
-│   └── services/
-├── frontend/
-├── configs/
-├── docs/
-└── tests/
-```
+## Roadmap framing
 
-## Updated milestone plan (condensed)
-
-### Milestone A: Broad SQL Core (current)
+### Milestone A: Query platform stabilization
 
 Target:
 
-- DataFusion-backed execution for a defined analytical SQL subset.
-- `/query/validate`, `/query/plan`, `/query/execute` stable and consistent.
-- CSV/Parquet ingestion and registry integration.
-- Minimal observability (debug metadata, basic logging, simple benchmarks).
+- stable validate / plan / execute behavior,
+- explicit tested SQL surface,
+- registry-backed ingestion and metadata,
+- repeatable benchmark coverage,
+- consistent debug and error behavior.
 
-### Milestone B: Copilot & Schema Services
-
-Target:
-
-- Copilot capable of generating valid SQL for single- and multi-table questions.
-- Schema endpoints for inspection and copilot context.
-- Better ambiguous-join handling and error messaging.
-
-### Milestone C: Observability & Feature-Serving Slice
+### Milestone B: Copilot and schema services
 
 Target:
 
-- OTEL spans around key flows.
-- Baseline dashboards and metrics.
-- First feature-store/inference integrations using the query engine as the spine.
+- stronger copilot grounding,
+- better schema/context endpoints,
+- broader evaluated NL-to-SQL coverage,
+- clearer multi-table and ambiguity handling.
 
-## Current query API contract (updated)
+### Milestone C: Observability and platform extensions
 
-### `POST /query/validate`
+Target:
 
-Purpose: product-level pre-check.
+- better tracing and metrics,
+- persistent operational visibility,
+- first feature-serving and inference-adjacent slices built on the query engine,
+- gradual expansion toward a fuller AI data plane.
 
-- Accepts SQL plus optional options.
-- Returns:
-  - `is_valid` flag.
-  - query summary (tables, columns, shape flags).
-  - product-level validation errors, if any.
+## Engineering principles
 
-### `POST /query/plan`
+1. **Keep the supported SQL surface explicit**  
+   Only document and claim support for what is tested.
 
-Purpose: planning artifacts.
+2. **Preserve one source of truth for schema**  
+   The dataset registry must remain the source of truth for dataset and column metadata.
 
-- For simple queries:
-  - Returns custom logical/physical plans.
-- For broad queries:
-  - Wraps DataFusion EXPLAIN output into a `logical_plan` / `physical_plan` JSON structure.
-- Always returns:
-  - `sql`, `normalized_sql`.
-  - `engine`.
-  - `steps`.
-  - `logical_plan`, `physical_plan`.
-  - Optional `debug` metadata.
+3. **Treat DataFusion as the primary engine**  
+   Do not design new execution behavior around the legacy narrow path.
 
-### `POST /query/execute`
+4. **Keep product validation separate from engine semantics**  
+   Product guardrails should stay understandable and limited.
 
-Purpose: execute and return results.
+5. **Build new layers on shared contracts**  
+   Copilot, ingestion, observability, and future services should reuse the same registry and query-service contracts.
 
-- Validates query (schema + guardrails).
-- Executes via DataFusion.
-- Returns:
-  - `row_count`, `columns`, `rows`.
-  - Optional logical/physical plan (where available).
-  - Optional `debug` metadata (timings, engine, stage).
-
-## Engineering principles (unchanged but sharpened)
-
-1. **Keep the SQL subset explicit**  
-   Only claim support for the SQL features that are tested and well-behaved in the product.
-
-2. **Prefer correctness over breadth**  
-   Each new feature must ship with tests, error handling, and docs.
-
-3. **Reuse validation logic**  
-   Validation logic should be shared across validate/plan/execute so behavior stays consistent.
-
-4. **Use the query engine as the spine**  
-   Feature serving, copilot, and inference should build on the query engine, not bypass it.
-
-5. **Layer the roadmap**  
-   Maintain a functioning system at all times; add new capabilities in vertical slices.
+6. **Prefer vertical slices over speculative architecture**  
+   A working, tested slice is more valuable than a larger but unverified roadmap claim.
 
 ## Near-term definition of success
 
 In the near term, InferSQL should be able to truthfully claim:
 
-- Broad analytical SQL (joins, subqueries, unions, grouped aggregates) over registered datasets, backed by DataFusion [web:26][web:243].
-- Stable dataset registration and schema introspection.
-- Structured error handling and minimal observability (debug metadata, logs).
-- A backend foundation strong enough to power a guarded SQL copilot and future feature store.
+- broad analytical SQL over registered datasets through a DataFusion-backed backend,
+- a stable registry and ingestion model for local analytical datasets,
+- product-owned validation and normalized API behavior,
+- a guarded copilot flow grounded in the real schema and query contracts,
+- enough benchmark and debug infrastructure to support iterative engine work.
