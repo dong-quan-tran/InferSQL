@@ -1,224 +1,413 @@
-Legend:
+Phase F1 – Scaffold
+Status: [ ]
 
-- not started
-- [~] in progress / partial
-- done
+Goal: establish a clean frontend app with shared infrastructure.
 
-Phase 0 – Scope & Outcomes  
-Status: [~]
+Deliverables:
 
-Remaining:
-- Write `docs/scope-august.md`.
-- Freeze the August claim set:
-  - Broad analytical SQL over registered datasets.
-  - Copilot works over the broader SQL surface.
-  - Existing HTTP API shape preserved.
-  - Minimal observability, benchmarks, and docs included.
-- Freeze the explicit non-goals:
-  - Full ANSI parity.
-  - DML/DDL beyond product needs.
-  - Advanced optimizer / cost-based work.
-  - Enterprise auth/governance.
+Create frontend/ with Vite + React + TypeScript.
 
-Phase 1 – Architecture & Contracts  
-Status: done
+Add Tailwind, TanStack Query, React Router, and a small API client layer.
 
-Completed:
-- Updated `docs/architecture/migration.md` direction in `development.md`:
-  - `/query/execute` → DataFusion-backed.
-  - `/query/plan` → custom planner for simple queries, DataFusion-backed broad planning for joins/subqueries/set ops.
-  - Custom engine is documented as reference / narrow-planning code, not production execution.
-- Clarified error mapping in `development.md`:
-  - syntax → `InvalidQuerySyntaxError`
-  - unknown dataset → `UnknownDatasetError`
-  - unknown column → `UnknownColumnError`
-  - ambiguous / unsupported semantics → `UnsupportedQueryError`
-- Confirmed the broad-plan JSON wrapper as the current `/query/plan` contract.
-- Centralized query analysis in `QueryService` and ensured all three endpoints reuse the same validation helpers.
+Add app shell layout: sidebar, top bar, main workspace.
 
-Phase 5 – Validation Redesign  
-Status: done
+Add environment config for backend base URL.
 
-Completed:
-- Centralized query analysis in `QueryService._analyze_query` so `/query/validate`, `/query/plan`, and `/query/execute` share:
-  - normalization,
-  - parsing,
-  - schema/column validation.
-- Documented the validation boundary in `development.md`:
-  - `/query/validate` = product schema + guardrails (`SELECT`-only, registry-backed table/column checks, `SELECT *` with `GROUP BY` rejection for single-table queries).
-  - `/query/execute` and broad `/query/plan` = DataFusion semantic truth; engine owns grouped/aggregate/window semantics.
-- Added targeted tests to lock in the boundary:
-  - `/query/validate` rejects `SELECT * FROM prices GROUP BY symbol` with a clear product error.
-  - `/query/execute` surfaces the same guardrail as `UnsupportedQueryError`.
-  - `/query/validate` allows queries where mixed aggregate/non-aggregate semantics are engine-owned, and `/query/execute` either runs them or returns a normalized error.
+Add basic theme tokens, loading states, and normalized error display.
 
-Remaining:
-- None for this phase.
+Suggested structure:
 
-Phase 6 – Metadata & Schema Alignment  
-Status: done
+text
+frontend/
+├── src/
+│   ├── app/
+│   ├── components/
+│   ├── features/
+│   │   ├── catalog/
+│   │   ├── query/
+│   │   ├── copilot/
+│   │   └── settings/
+│   ├── lib/
+│   │   ├── api/
+│   │   ├── query-client/
+│   │   └── utils/
+│   ├── routes/
+│   └── types/
+├── public/
+└── package.json
+Exit criteria:
 
-Completed:
-- Documented the dataset registry as the source of truth for:
-  - table names,
-  - column names/types,
-  - optional descriptions/sample values.
-- Added a schema-alignment test module verifying consistency across:
-  - registry,
-  - catalog endpoints,
-  - query execution column surfaces.
-- Documented naming conventions for dataset registration:
-  - lowercase,
-  - snake_case,
-  - stable API-facing dataset names,
-  - lowercase snake_case column names where possible.
+Frontend boots locally.
 
-Phase 7 – Catalog & Ingestion  
-Status: done
+Can reach backend base URL.
 
-Completed:
-- Implemented CSV ingestion via `pyarrow.csv.read_csv`.
-- Implemented Parquet ingestion via `pyarrow.parquet.read_table`.
-- Auto-registers loaded datasets in the registry with:
-  - schema,
-  - row count,
-  - source path,
-  - loaded timestamp.
-- Wired ingestion into query execution so newly ingested datasets are queryable via `/query/execute`.
-- Added catalog/API tests for:
-  - CSV success,
-  - Parquet success,
-  - duplicate names,
-  - overwrite behavior,
-  - upload success for CSV and Parquet,
-  - ingested datasets being queryable.
-- Normalized invalid file / schema handling into API 400 responses and added tests for:
-  - unsupported extensions,
-  - missing file paths,
-  - malformed CSV,
-  - invalid Parquet.
+Query client/provider wired once at app root, which is the recommended TanStack Query pattern.
 
-Phase 8 – Broad SQL Capability  
-Status: done
+Phase F2 – Query Workbench MVP
+Status: [ ]
 
-Completed:
-- Added execute coverage for:
-  - `LEFT JOIN`,
-  - join and alias-heavy joins,
-  - scalar subqueries in `SELECT`,
-  - scalar subqueries in `WHERE`,
-  - `HAVING` success and failure cases,
-  - arithmetic and richer expressions in `SELECT` / `ORDER BY` / `WHERE`.
-- Routed broad planning/execution (joins, subqueries, set ops) through DataFusion.
-- Added execution coverage for a narrow window-function surface:
-  - `ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)`,
-  - `LAG(close, 1) OVER (PARTITION BY ... ORDER BY close)`,
-  - `SUM(close) OVER (PARTITION BY ... ORDER BY close ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)`.
+Goal: ship the first real user-facing InferSQL surface.
 
-Notes:
-- Any window-function shapes not covered by tests are “engine-supported but not product-guaranteed” until explicitly documented.
+Deliverables:
 
-## Phase 9 – Copilot & broad SQL evals
+“Query Workbench” page.
 
-- [x] Replace legacy narrow copilot eval with DataFusion-backed architecture
-- [x] Add deterministic EvalLLMProvider and EvalQueryService harness
-- [x] Wire copilot evals to registry-backed demo dataset (`prices`)
-- [x] Ensure copilot eval suite runs in CI (`test_copilot_eval.py`)
-- [x] Make Gemini/OpenAI providers optional (lazy imports, optional deps)
-- [x] Add live eval script using Ollama only (no paid providers required)
-- [x] Expand copilot eval cases to cover aggregates and `HAVING`
-- [x] Expand copilot eval cases to cover successful multi-table joins
-- [x] Expand copilot eval cases to cover subqueries that succeed against a richer registry
-- [x] Tune copilot repair prompts for ambiguous joins and schema mismatches
+Monaco SQL editor with starter SQL and run buttons.
 
-Phase 10 – Error Handling & UX  
-Status: [x]
+Tabs or panels for:
 
-Completed:
-- Normalized DataFusion errors into product exceptions (`InvalidQuerySyntaxError`, `UnknownDatasetError`, `UnknownColumnError`, `UnsupportedQueryError`, `InternalServerError`).
-- Added mapping for common engine error strings (ambiguous columns, unsupported features, bad set operation shapes).
-- Attached structured error envelopes (`ErrorResponse` / `ErrorDetail`) with `type`, `code`, `message`, `status_code`, `request_id` across `/query/validate`, `/query/plan`, `/query/execute`.
-- Implemented optional error-level debug metadata (`debug.stage`, `debug.engine`, `debug.error_origin`) and documented it in the OpenAPI schema.
-- Wired the `debug` query parameter through the request lifecycle so errors include debug metadata only when explicitly requested.
-- Documented status-code and error behavior in `README.md` and `DEVELOPMENT.md`.
-- Added and fixed tests covering:
-  - internal engine failures and debug metadata on `/query/execute`,
-  - debug metadata on `/query/validate`,
-  - OpenAPI documentation for error and debug fields.
+Validate
 
-Remaining:
-- None for Phase 10. Further changes to error handling or debug metadata should be considered part of future phases.
+Plan
 
-Phase 11 – Observability  
-Status: done
+Execute
 
-Completed:
-- Extended debug metadata to include `features` (e.g., `["join"]`, `["set_op"]`, `["window"]`, `["derived_from"]`) in validate/plan/execute debug responses.
-- Added tests asserting:
-  - debug metadata includes `features` as a list,
-  - join queries set `"join"` in `features`,
-  - window queries set `"window"` in `features`.
-- Documented the current debug metadata contract in `development.md`:
-  - `request_id`
-  - `total_ms`
-  - `stage`
-  - `engine`
-  - `error_origin`
-  - `features`
-- Standardized structured logging for query execution so `app.services.query_service` emits:
-  - `stage`,
-  - `total_ms`,
-  - `sql_hash`,
-  - `engine`,
-  - `dataset`,
-  - `error_code` on completion.
-- Added a logging test to ensure `/query/execute` emits a structured log record with these fields.
+Results table for rows/columns.
 
-### Phase 12 – Performance benchmark harness
+Debug panel for stage, engine, features, timings.
 
-- [x] Add an in-process benchmark script that exercises `/query/execute` against synthetic Arrow-backed datasets.
-- [x] Seed `prices_bench_*` and `fundamentals_bench_*` tables into the in-memory registry at runtime inside the benchmark script.
-- [x] Run benchmarks across 1k / 10k / 100k / 1M rows for filter, aggregate, order-by, and join query shapes.
-- [x] Persist results to `benchmark_results/benchmark_summary_<RUN_ID>.json` and `.csv`, plus per-iteration CSV, and capture a Phase 12 baseline.
+Error panel that renders normalized backend errors consistently.
 
-Phase 13 – Docs  
-Status: [~]
+Query history in memory for current session.
 
-Completed:
-- Updated `development.md` to:
-  - describe the hybrid DataFusion-backed architecture,
-  - document the current tested SQL surface,
-  - clarify validation vs engine responsibilities,
-  - call out known limitations (including window and alias behavior).
+Core UX:
 
-Remaining:
-- Rewrite `Blueprint.md` so it reflects the real current platform:
-  - DataFusion-backed broad SQL backend,
-  - custom validation / registry / copilot layers,
-  - observability and ingestion still in progress.
-- Update README with:
-  - how to register datasets,
-  - how to use validate/plan/execute,
-  - what “broad SQL” means in practice.
-- Add concrete examples:
-  - join,
-  - subquery,
-  - `HAVING`,
-  - `UNION`,
-  - one copilot NL→SQL example once prompts are updated.
+Left: dataset browser.
 
-Phase 14 – Release Prep  
-Status: [~]
+Center: SQL editor.
 
-Remaining:
-- Add at least one end-to-end demo over 2–3 datasets:
-  - ingest → validate → execute
-  - copilot → execute
-- Remove obsolete TODOs and stale comments.
-- Verify docs match current behavior exactly.
-- Tag a release candidate.
-- Write short release notes:
-  - new SQL capability,
-  - current limitations,
-  - copilot status,
-  - ingestion/observability status.
+Right/bottom: results, plan, debug, errors.
+
+Exit criteria:
+
+User can type SQL and call /query/validate, /query/plan, /query/execute.
+
+Results, plans, and errors render clearly.
+
+End-to-end demo works against your current backend API.
+
+Phase F3 – Catalog and Dataset Explorer
+Status: [ ]
+
+Goal: make schema discovery easy so users do not need to guess tables and columns.
+
+Deliverables:
+
+Dataset list from GET /catalog/datasets.
+
+Dataset detail drawer/page from GET /catalog/datasets/{name}.
+
+Display:
+
+dataset description,
+
+row count,
+
+source path / loaded time when available,
+
+columns and types,
+
+optional column descriptions,
+
+sample values if returned.
+
+“Insert sample query” actions:
+
+SELECT * FROM dataset LIMIT 10
+
+basic aggregate examples
+
+join example when paired datasets exist
+
+Exit criteria:
+
+User can browse datasets without leaving the app.
+
+Dataset metadata helps author SQL faster.
+
+Phase F4 – Ingestion UI
+Status: [ ]
+
+Goal: make dataset registration usable from the frontend.
+
+Deliverables:
+
+Local path ingestion form for /catalog/ingest.
+
+File upload form for /catalog/upload.
+
+Overwrite toggle.
+
+Success/failure toasts or inline notices.
+
+Automatic catalog refresh after successful ingest.
+
+Nice-to-have:
+
+ingest preview summary,
+
+recent ingests list,
+
+validation hints for unsupported formats.
+
+Exit criteria:
+
+A new dataset can be registered from the UI and then queried immediately.
+
+Phase F5 – Copilot UI
+Status: [ ]
+
+Goal: expose the backend’s NL→SQL flow in a controlled, inspectable way.
+
+Deliverables:
+
+Natural-language prompt input.
+
+“Generate SQL” action.
+
+Show:
+
+candidate SQL,
+
+assumptions,
+
+selected tables if returned,
+
+validation result,
+
+optional execution result.
+
+“Send to editor” button.
+
+Repair/retry history panel if backend returns it.
+
+Design principle:
+
+Copilot should feel like an assistant, not a black box.
+
+Always show generated SQL and validation outcome before encouraging trust.
+
+Exit criteria:
+
+A user can ask a natural-language question and inspect the generated SQL path end to end.
+
+Phase F6 – Query History and Saved Sessions
+Status: [ ]
+
+Goal: make the workbench feel like a real tool rather than a one-shot demo.
+
+Deliverables:
+
+Query history list.
+
+Re-run previous SQL.
+
+Save named query snippets.
+
+Pin favorite queries.
+
+Compare validate/plan/execute outputs for a query.
+
+Important note:
+
+Start with in-memory or local frontend persistence only if you want speed.
+
+If you want to stay aligned with your backend rigor, you can defer durable persistence until you define a backend contract for it.
+
+Exit criteria:
+
+Users can return to prior work without retyping.
+
+Phase F7 – Visualization and Result UX
+Status: [ ]
+
+Goal: improve usability for larger result sets and make benchmark/demo flows more compelling.
+
+Deliverables:
+
+Better result table:
+
+sticky header,
+
+column resizing,
+
+copy cell/row,
+
+CSV export.
+
+Lightweight charts for obvious aggregate result sets.
+
+Plan tree viewer for logical/physical plan output.
+
+Better JSON viewers for debug payloads.
+
+Exit criteria:
+
+Query results are easy to inspect beyond the raw JSON stage.
+
+Phase F8 – Observability UI
+Status: [ ]
+
+Goal: expose the backend’s debug and performance signals in a useful way.
+
+Deliverables:
+
+Request timeline card using debug.total_ms.
+
+Engine/stage badges.
+
+Feature flags display (join, set_op, window, derived_from).
+
+Benchmark artifact viewer:
+
+upload/open JSON/CSV summaries,
+
+display baseline results,
+
+maybe simple charts later.
+
+Exit criteria:
+
+Developers can use the UI as a lightweight internal console for backend behavior.
+
+Phase F9 – Polishing and Demo Readiness
+Status: [ ]
+
+Goal: make the frontend presentable for demos, portfolio use, and faster iteration.
+
+Deliverables:
+
+Empty/loading/error states across the app.
+
+Keyboard shortcuts:
+
+run query,
+
+format SQL,
+
+focus editor,
+
+open catalog.
+
+Responsive layout for laptop and tablet widths.
+
+Cleaner branding/copy.
+
+README for frontend local setup.
+
+Screenshots or demo GIFs.
+
+Exit criteria:
+
+The app feels coherent enough to show other people without caveats every minute.
+
+Recommended order
+I’d do the frontend in this order:
+
+F1 – Scaffold
+
+F2 – Query Workbench MVP
+
+F3 – Catalog Explorer
+
+F4 – Ingestion UI
+
+F5 – Copilot UI
+
+F6 – Query History
+
+F7 – Visualization
+
+F8 – Observability UI
+
+F9 – Polish
+
+That order mirrors the backend’s real strengths: query core first, schema second, ingestion third, copilot after the core experience is solid.
+
+Suggested frontend MVP definition
+Your first true frontend milestone should probably stop at:
+
+F1 complete
+
+F2 complete
+
+F3 complete
+
+That is enough to call it an InferSQL frontend MVP:
+
+browse datasets,
+
+write SQL,
+
+validate/plan/execute,
+
+inspect results and debug data.
+
+Proposed todo.md section
+You could add this as a new top-level frontend roadmap:
+
+text
+## Frontend roadmap
+
+### Phase F1 – Frontend scaffold
+Status: [ ]
+
+- [ ] Create `frontend/` with Vite + React + TypeScript.
+- [ ] Add Tailwind, TanStack Query, routing, and shared API client setup.
+- [ ] Add app shell layout and backend base URL configuration.
+- [ ] Add shared loading and normalized error components.
+
+### Phase F2 – Query Workbench MVP
+Status: [ ]
+
+- [ ] Build a SQL editor workbench with Monaco.
+- [ ] Wire `/query/validate`, `/query/plan`, and `/query/execute`.
+- [ ] Render result rows, plan output, debug metadata, and normalized errors.
+- [ ] Add in-memory query history.
+
+### Phase F3 – Catalog Explorer
+Status: [ ]
+
+- [ ] Build dataset list and dataset detail views from catalog endpoints.
+- [ ] Show schema, types, descriptions, row counts, and samples where available.
+- [ ] Add quick actions to insert example SQL into the editor.
+
+### Phase F4 – Ingestion UI
+Status: [ ]
+
+- [ ] Add local-path ingest form for `/catalog/ingest`.
+- [ ] Add upload form for `/catalog/upload`.
+- [ ] Add overwrite toggle and refresh catalog on success.
+
+### Phase F5 – Copilot UI
+Status: [ ]
+
+- [ ] Add NL→SQL prompt input and generated SQL display.
+- [ ] Show assumptions, validation output, and optional execution result.
+- [ ] Add “send to editor” and repair-history display.
+
+### Phase F6 – Query History
+Status: [ ]
+
+- [ ] Add saved queries, favorites, and rerun support.
+- [ ] Improve session continuity for repeated experimentation.
+
+### Phase F7 – Result UX and Visualization
+Status: [ ]
+
+- [ ] Improve result table usability.
+- [ ] Add CSV export and lightweight charts for aggregate outputs.
+- [ ] Add a better plan/debug viewer.
+
+### Phase F8 – Observability UI
+Status: [ ]
+
+- [ ] Surface engine, stage, timing, and feature debug metadata clearly.
+- [ ] Add benchmark artifact viewing for Phase 12 outputs.
+
+### Phase F9 – Polish
+Status: [ ]
+
+- [ ] Add keyboard shortcuts, responsive cleanup, and refined empty/error states.
+- [ ] Add frontend README and demo-ready screenshots.
+
