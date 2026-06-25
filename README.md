@@ -138,6 +138,52 @@ All services are constructed in a FastAPI lifespan function that:
   - LLM provider via the provider factory.
   - `CopilotService` using those components.
 
+### Error responses
+
+All query endpoints (`/query/validate`, `/query/plan`, `/query/execute`) return a normalized error envelope on non-2xx responses:
+
+```json
+{
+  "error": {
+    "type": "InvalidQuerySyntaxError",
+    "code": "INVALIDQUERYSYNTAXERROR",
+    "message": "Invalid SQL syntax",
+    "status_code": 400,
+    "request_id": "b9fc0a0e-...",
+    "debug": {
+      "stage": "error",
+      "engine": "datafusion",
+      "error_origin": "engine_execution"
+    }
+  }
+}
+```
+
+- `type` – exception class name (e.g., `EmptyQueryError`, `UnknownDatasetError`, `InternalServerError`).
+- `code` – uppercased version of `type`, suitable for logs and client-side branching.
+- `message` – human-readable description of the error.
+- `status_code` – HTTP status (400, 404, 500).
+- `request_id` – correlation ID; also present in structured logs.
+
+The optional `debug` object is only present when debug mode is enabled (see below):
+
+- `stage` – currently `"error"` when populated by the global error handler.
+- `engine` – the query engine that raised the error (e.g., `"datafusion"` for internal execution failures), or `null` when not applicable.
+- `error_origin` – coarse origin classification (e.g., `"engine_execution"` for internal execution engine failures).
+
+The error envelope is modeled by `ErrorResponse`/`ErrorDetail` in `app/schemas/query.py` and produced by the custom handlers in `app/core/error_handlers.py`.
+
+### Debug flag
+
+The query endpoints accept an optional `debug` query parameter:
+
+- `debug=false` (default): responses omit internal engine details and only return the normalized error envelope.
+- `debug=true`: the backend:
+  - Sets `request.state.debug` so downstream code can emit richer diagnostics.
+  - Attaches a `debug` object to error responses with `stage`, `engine`, and `error_origin`.
+
+The debug flag is intended for local development and internal tooling, not for untrusted clients in production.
+
 ---
 
 ## Configuration
