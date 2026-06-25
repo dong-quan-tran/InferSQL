@@ -350,12 +350,12 @@ text
 ## Frontend roadmap
 
 ### Phase F1 – Frontend scaffold
-Status: [ ]
+Status: [x]
 
-- [ ] Create `frontend/` with Vite + React + TypeScript.
-- [ ] Add Tailwind, TanStack Query, routing, and shared API client setup.
-- [ ] Add app shell layout and backend base URL configuration.
-- [ ] Add shared loading and normalized error components.
+- [x] Create `frontend/` with Vite + React + TypeScript.
+- [x] Add Tailwind, TanStack Query, routing, and shared API client setup.
+- [x] Add app shell layout and backend base URL configuration.
+- [x] Add shared loading and normalized error components.
 
 ### Phase F2 – Query Workbench MVP
 Status: [ ]
