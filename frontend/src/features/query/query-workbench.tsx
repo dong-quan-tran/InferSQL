@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ApiError } from "../../lib/api/client";
+import type { QueryHistoryEntry, QueryHistorySource } from "../../types/history";
 import type {
     ErrorResponse,
     ExecuteResponse,
@@ -18,6 +19,11 @@ type ActiveTab = "validate" | "plan" | "execute" | "error";
 type QueryWorkbenchProps = {
     sql: string;
     onSqlChange: (value: string) => void;
+    history: QueryHistoryEntry[];
+    onSaveHistory: (sql: string, source: QueryHistorySource) => void;
+    onToggleFavorite: (id: string) => void;
+    onDeleteHistory: (id: string) => void;
+    onClearHistory: () => void;
 };
 
 function extractErrorPayload(
@@ -41,17 +47,19 @@ function extractErrorPayload(
 export function QueryWorkbench({
     sql,
     onSqlChange,
+    history,
+    onSaveHistory,
+    onToggleFavorite,
+    onDeleteHistory,
+    onClearHistory,
 }: QueryWorkbenchProps) {
-    const [history, setHistory] = useState<string[]>([]);
     const [activeTab, setActiveTab] = useState<ActiveTab>("execute");
 
-    const validateMutation = useMutation<ValidateResponse, Error, { sql: string }>(
-        {
-            mutationFn: validateSql,
-            onSuccess: () => setActiveTab("validate"),
-            onError: () => setActiveTab("error"),
-        },
-    );
+    const validateMutation = useMutation<ValidateResponse, Error, { sql: string }>({
+        mutationFn: validateSql,
+        onSuccess: () => setActiveTab("validate"),
+        onError: () => setActiveTab("error"),
+    });
 
     const planMutation = useMutation<PlanResponse, Error, { sql: string }>({
         mutationFn: planSql,
@@ -59,13 +67,11 @@ export function QueryWorkbench({
         onError: () => setActiveTab("error"),
     });
 
-    const executeMutation = useMutation<ExecuteResponse, Error, { sql: string }>(
-        {
-            mutationFn: executeSql,
-            onSuccess: () => setActiveTab("execute"),
-            onError: () => setActiveTab("error"),
-        },
-    );
+    const executeMutation = useMutation<ExecuteResponse, Error, { sql: string }>({
+        mutationFn: executeSql,
+        onSuccess: () => setActiveTab("execute"),
+        onError: () => setActiveTab("error"),
+    });
 
     const latestError =
         validateMutation.error || planMutation.error || executeMutation.error;
@@ -91,29 +97,13 @@ export function QueryWorkbench({
         validateMutation.data,
     ]);
 
-    function pushHistory(nextSql: string) {
-        const trimmed = nextSql.trim();
-        if (!trimmed) return;
-
-        setHistory((current) => {
-            const withoutDuplicate = current.filter((item) => item !== trimmed);
-            return [trimmed, ...withoutDuplicate].slice(0, 10);
-        });
+    function handleRun(source: QueryHistorySource, runner: () => void) {
+        onSaveHistory(sql, source);
+        runner();
     }
 
-    function handleValidate() {
-        pushHistory(sql);
-        validateMutation.mutate({ sql });
-    }
-
-    function handlePlan() {
-        pushHistory(sql);
-        planMutation.mutate({ sql });
-    }
-
-    function handleExecute() {
-        pushHistory(sql);
-        executeMutation.mutate({ sql });
+    function handleSaveCurrent() {
+        onSaveHistory(sql, "copilot");
     }
 
     return (
@@ -122,9 +112,9 @@ export function QueryWorkbench({
                 <SqlEditor
                     value={sql}
                     onChange={onSqlChange}
-                    onValidate={handleValidate}
-                    onPlan={handlePlan}
-                    onExecute={handleExecute}
+                    onValidate={() => handleRun("validate", () => validateMutation.mutate({ sql }))}
+                    onPlan={() => handleRun("plan", () => planMutation.mutate({ sql }))}
+                    onExecute={() => handleRun("execute", () => executeMutation.mutate({ sql }))}
                     isValidating={validateMutation.isPending}
                     isPlanning={planMutation.isPending}
                     isExecuting={executeMutation.isPending}
@@ -170,6 +160,14 @@ export function QueryWorkbench({
                     >
                         Error
                     </button>
+
+                    <button
+                        onClick={handleSaveCurrent}
+                        disabled={!sql.trim()}
+                        className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-300 transition hover:border-cyan-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        Save query
+                    </button>
                 </div>
 
                 <ResponsePanel
@@ -180,7 +178,13 @@ export function QueryWorkbench({
             </div>
 
             <div className="space-y-6">
-                <QueryHistory items={history} onSelect={onSqlChange} />
+                <QueryHistory
+                    items={history}
+                    onSelect={onSqlChange}
+                    onToggleFavorite={onToggleFavorite}
+                    onDelete={onDeleteHistory}
+                    onClear={onClearHistory}
+                />
 
                 <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
                     <div className="mb-4">

@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "./components/layout/app-shell";
 import { CatalogExplorer } from "./features/catalog/catalog-explorer";
 import { CopilotPanel } from "./features/copilot/copilot-panel";
 import { QueryWorkbench } from "./features/query/query-workbench";
 import { apiGet, API_BASE_URL, ApiError } from "./lib/api/client";
+import type { QueryHistoryEntry, QueryHistorySource } from "./types/history";
 
 type CatalogDataset = {
   name: string;
@@ -23,6 +24,8 @@ FROM prices
 WHERE close > 100
 ORDER BY close DESC
 LIMIT 10`;
+
+const HISTORY_STORAGE_KEY = "infersql.query-history.v1";
 
 type SidebarProps = {
   activeView: ActiveView;
@@ -88,7 +91,7 @@ function Header({ activeView }: { activeView: ActiveView }) {
   return (
     <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
       <div>
-        <p className="text-sm font-medium text-white">Phase F5</p>
+        <p className="text-sm font-medium text-white">Phase F6</p>
         <p className="text-xs text-slate-400">
           {activeView === "query"
             ? "Query workbench"
@@ -119,13 +122,97 @@ function Header({ activeView }: { activeView: ActiveView }) {
   );
 }
 
+function readInitialHistory(): QueryHistoryEntry[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const raw = window.sessionStorage.getItem(HISTORY_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter(
+      (item): item is QueryHistoryEntry =>
+        typeof item?.id === "string" &&
+        typeof item?.sql === "string" &&
+        typeof item?.source === "string" &&
+        typeof item?.createdAt === "string" &&
+        typeof item?.favorite === "boolean",
+    );
+  } catch {
+    return [];
+  }
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState<ActiveView>("query");
   const [sql, setSql] = useState(STARTER_SQL);
+  const [history, setHistory] = useState<QueryHistoryEntry[]>(readInitialHistory);
+
+  useEffect(() => {
+    window.sessionStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
+  }, [history]);
+
+  const favoriteCount = useMemo(
+    () => history.filter((item) => item.favorite).length,
+    [history],
+  );
+
+  function saveHistory(nextSql: string, source: QueryHistorySource) {
+    const trimmed = nextSql.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    setHistory((current) => {
+      const existingFavorite =
+        current.find((item) => item.sql === trimmed)?.favorite ?? false;
+
+      const withoutDuplicate = current.filter((item) => item.sql !== trimmed);
+
+      const nextEntry: QueryHistoryEntry = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        sql: trimmed,
+        source,
+        createdAt: new Date().toISOString(),
+        favorite: existingFavorite,
+      };
+
+      return [nextEntry, ...withoutDuplicate].slice(0, 30);
+    });
+  }
+
+  function toggleFavorite(id: string) {
+    setHistory((current) =>
+      current.map((item) =>
+        item.id === id ? { ...item, favorite: !item.favorite } : item,
+      ),
+    );
+  }
+
+  function deleteHistory(id: string) {
+    setHistory((current) => current.filter((item) => item.id !== id));
+  }
+
+  function clearHistory() {
+    setHistory([]);
+  }
 
   function handleInsertSql(nextSql: string) {
     setSql(nextSql);
     setActiveView("query");
+  }
+
+  function handleCopilotSendToEditor(nextSql: string) {
+    saveHistory(nextSql, "copilot");
+    handleInsertSql(nextSql);
   }
 
   return (
@@ -136,12 +223,24 @@ export default function App() {
       header={<Header activeView={activeView} />}
     >
       {activeView === "query" ? (
-        <QueryWorkbench sql={sql} onSqlChange={setSql} />
+        <QueryWorkbench
+          sql={sql}
+          onSqlChange={setSql}
+          history={history}
+          onSaveHistory={saveHistory}
+          onToggleFavorite={toggleFavorite}
+          onDeleteHistory={deleteHistory}
+          onClearHistory={clearHistory}
+        />
       ) : activeView === "catalog" ? (
         <CatalogExplorer onInsertSql={handleInsertSql} />
       ) : (
-        <CopilotPanel onSendToEditor={handleInsertSql} />
+        <CopilotPanel onSendToEditor={handleCopilotSendToEditor} />
       )}
+
+      <div className="sr-only" aria-live="polite">
+        {favoriteCount} favorite queries saved.
+      </div>
     </AppShell>
   );
 }
