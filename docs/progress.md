@@ -716,3 +716,56 @@ Wrapped up Phase 10 for InferSQL backend work: error handling, debug metadata, c
 - Query error handling is now consistent across service, API, schema, and docs.
 - Debug metadata is implemented, documented, and covered by tests.
 - Phase 10 is fully wrapped up and should not need to be revisited unless the error contract changes in a future phase.
+
+
+## 2025-06-25 — Phase 13 + F3 work
+
+### Docs and architecture (Phase 13 – Docs)
+
+- Rewrote `Blueprint.md` to describe the real current platform:
+  - DataFusion-backed broad SQL backend as the primary execution and planning engine.
+  - Registry / validation / copilot layers called out as product-owned layers around DataFusion.
+  - Clarified that ingestion and observability are present but still early-stage, not full platform slices.
+- Updated the platform narrative so that:
+  - `/query/execute` is treated as the source of truth for tested SQL behavior.
+  - `/query/plan` is explicitly hybrid (legacy narrow planner for simple cases, DataFusion for broad SQL).
+  - `/query/validate` is positioned as a precheck / guardrail layer, not a reimplementation of engine semantics.
+
+### Workbench UX and docs (Phase 13 – Docs, workbench slice)
+
+- Expanded `development.md` and/or README to:
+  - Explicitly describe the tested “broad SQL” subset (joins, subqueries, `UNION`, grouped aggregates, `HAVING`, etc.).
+  - Clarify validation vs engine responsibilities and the shared debug/error contracts.
+  - Document how dataset registration, validation, planning, and execution hang together around the registry.
+
+### Frontend workbench improvements (Phase F3 – Catalog Explorer prep)
+
+- Query Workbench:
+  - Added a `ResultTable` component to render `execute` results as a proper table using `columns` and `rows`, instead of only JSON.
+  - Kept the JSON `ResponsePanel` for full responses while making the “Latest execute rows” panel more readable.
+  - Preserved the existing validate/plan/execute error model and history behavior.
+
+### Catalog Explorer (Phase F3 – Catalog Explorer)
+
+- Implemented a Catalog Explorer as a master-detail UI:
+  - Left-side dataset list, backed by `/catalog/datasets`.
+  - Right-side dataset detail view, backed by `/catalog/datasets/{name}`.
+- Dataset list:
+  - Shows name, description, and row counts for each registered dataset.
+  - Selecting a dataset updates the detail panel.
+- Dataset detail:
+  - Shows dataset metadata (rows, column count, source path) plus a schema table with name, type, and description per column.
+  - Wired quick actions for starter SQL:
+    - “Insert SELECT *” (`SELECT * FROM <dataset> LIMIT 10`).
+    - “Insert starter query” using the first column as a simple projection.
+- App integration:
+  - Lifted SQL editor state up into `App.tsx`.
+  - Added a simple `activeView` switch between “Query Workbench” and “Catalog Explorer” in the sidebar.
+  - Connected catalog quick actions so they:
+    - Set the editor SQL.
+    - Automatically switch back to the Query Workbench view.
+- Outcome:
+  - End-to-end flow now works:
+    - Inspect datasets and schema in Catalog Explorer.
+    - Click a quick action to insert example SQL.
+    - Land back in the Query Workbench with the SQL prefilled and ready to validate/plan/execute.s
