@@ -47,6 +47,13 @@ InferSQL currently supports a **broad but explicit analytical SQL subset** over 
 
 This file is the ground truth for what is **actually supported and tested**.
 
+A simple mental model:
+
+- **Registry**: defines what datasets/columns exist.
+- **Validate**: precheck and guardrails over the registry.
+- **Plan**: planning artifacts (hybrid: narrow custom + DataFusion).
+- **Execute**: DataFusion-backed engine behavior (source of truth).
+
 ## Registry and metadata
 
 InferSQL uses the dataset registry as the source of truth for dataset metadata.
@@ -129,6 +136,12 @@ Ingestion rules:
   - rejected as `400 ValidationError` via a normalized `DatasetLoadError`.
 
 Newly ingested datasets are immediately queryable via `/query/execute` once they are registered in the registry.
+
+On the frontend, these endpoints power a **Catalog Explorer** that:
+
+- shows a dataset list (name, description, row counts) backed by `/catalog/datasets`,
+- shows a dataset detail view (rows, columns, schema) backed by `/catalog/datasets/{name}`,
+- exposes quick actions that insert example SQL (e.g. `SELECT * FROM <dataset> LIMIT 10`) into the query workbench editor.
 
 ### Supported (high-level)
 
@@ -308,6 +321,11 @@ The rule of thumb:
 
 - Logical and physical plans are included only where they are available and meaningful.
 
+On the frontend, `/query/execute` responses are surfaced in two ways:
+
+- a JSON view that shows the full response (including plans and debug metadata),
+- a tabular view that renders `columns` + `rows` as a result table for the latest execute call.
+
 ### Debug metadata contract
 
 All three endpoints share the same debug metadata shape when `debug=true`:
@@ -425,8 +443,8 @@ Copilot uses a prompt builder that is explicitly aligned with the tested broad S
     - use a broad but explicit analytical SQL subset (joins, grouped aggregates, `HAVING`, subqueries, set operations),
     - ground all references in the provided schema context (no invented tables, columns, or join keys),
     - qualify columns in multi-table queries when ambiguity is possible,
-    - map business synonyms (e.g. “ticker”, “price”) to canonical schema columns when supported and record those mappings in `assumptions`,
-    - choose conservative interpretations for ambiguous questions (e.g. “latest”, “best”) and document limitations in `assumptions`,
+    - map business synonyms (e.g., “ticker”, “price”) to canonical schema columns when supported and record those mappings in `assumptions`,
+    - choose conservative interpretations for ambiguous questions (e.g., “latest”, “best”) and document limitations in `assumptions`,
     - return exactly one JSON object that matches the `CopilotSqlCandidate` schema (no prose, no markdown fences, no extra keys).
 - `build_user_prompt`:
   - injects registry-backed schema context, synonym guidance, and few-shot examples,
@@ -445,11 +463,11 @@ Phase 9 migrated Copilot from a narrow, single-table world to a tested **broad S
 
 - The eval harness now covers:
   - simple single-table projections and filters,
-  - synonym and schema-mismatch repair (e.g. `ticker` → `symbol`, `price` → `close`),
+  - synonym and schema-mismatch repair (e.g., `ticker` → `symbol`, `price` → `close`),
   - hallucinated datasets/columns and unsupported features,
   - aggregate queries with `COUNT`/`AVG` and `HAVING` on grouped results,
   - successful joins between `prices` and `fundamentals`,
-  - successful subqueries over the richer registry (e.g. `IN (SELECT symbol FROM fundamentals)`, scalar subqueries for overall aggregates).
+  - successful subqueries over the richer registry (e.g., `IN (SELECT symbol FROM fundamentals)`, scalar subqueries for overall aggregates).
 - Eval cases are grouped into categories such as:
   - `simple_select`,
   - `synonym`,
