@@ -27,6 +27,21 @@ function getErrorMessage(error: unknown): string {
 const STARTER_QUESTION =
   "Show me the symbols and closing prices above 100, highest first, limit 5.";
 
+function EmptyPanel({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-lg border border-dashed border-slate-700 bg-slate-950 p-4 text-sm">
+      <p className="font-medium text-slate-200">{title}</p>
+      <p className="mt-1 text-slate-400">{description}</p>
+    </div>
+  );
+}
+
 export function CopilotPanel({ onSendToEditor }: CopilotPanelProps) {
   const [question, setQuestion] = useState(STARTER_QUESTION);
   const [execute, setExecute] = useState(false);
@@ -48,31 +63,42 @@ export function CopilotPanel({ onSendToEditor }: CopilotPanelProps) {
     mutation.mutate();
   }
 
+  function handleQuestionKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      mutation.mutate();
+    }
+  }
+
   return (
-    <div className="grid gap-6 p-6 xl:grid-cols-[minmax(0,1fr)_380px]">
-      <div className="space-y-6">
+    <div className="grid gap-6 p-4 sm:p-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="space-y-6 min-w-0">
         <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
           <div className="mb-4">
             <h2 className="text-lg font-semibold text-white">Copilot prompt</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Ask a natural-language question and generate SQL against the
-              registered datasets.
+              Ask a natural-language question and generate SQL against the registered datasets.
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <label className="block">
-              <span className="mb-1 block text-sm text-slate-300">
-                Question
-              </span>
+              <span className="mb-1 block text-sm text-slate-300">Question</span>
               <textarea
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
+                onKeyDown={handleQuestionKeyDown}
                 rows={4}
                 placeholder="Ask a question about your registered datasets..."
                 className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-500"
               />
             </label>
+
+            <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
+              <span className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1">
+                Ctrl/Cmd + Enter → Generate SQL
+              </span>
+            </div>
 
             <label className="flex items-center gap-3 text-sm text-slate-300">
               <input
@@ -115,9 +141,7 @@ export function CopilotPanel({ onSendToEditor }: CopilotPanelProps) {
         <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-white">
-                Generated SQL
-              </h2>
+              <h2 className="text-lg font-semibold text-white">Generated SQL</h2>
               <p className="mt-1 text-sm text-slate-400">
                 SQL candidate returned by the copilot backend.
               </p>
@@ -135,11 +159,10 @@ export function CopilotPanel({ onSendToEditor }: CopilotPanelProps) {
                   Attempts: {response.attempts}
                 </span>
                 <span
-                  className={`rounded-md border px-2 py-1 ${
-                    response.repaired
+                  className={`rounded-md border px-2 py-1 ${response.repaired
                       ? "border-amber-800 bg-amber-950/40 text-amber-200"
                       : "border-slate-800 bg-slate-950 text-slate-400"
-                  }`}
+                    }`}
                 >
                   {response.repaired ? "Repaired" : "No repair"}
                 </span>
@@ -147,9 +170,16 @@ export function CopilotPanel({ onSendToEditor }: CopilotPanelProps) {
             ) : null}
           </div>
 
-          <pre className="max-h-[320px] overflow-auto rounded-lg border border-slate-800 bg-slate-950 p-4 text-xs text-slate-200">
-            {candidate?.sql || "-- No SQL generated yet --"}
-          </pre>
+          {candidate?.sql ? (
+            <pre className="max-h-[320px] overflow-auto rounded-lg border border-slate-800 bg-slate-950 p-4 text-xs text-slate-200">
+              {candidate.sql}
+            </pre>
+          ) : (
+            <EmptyPanel
+              title="No SQL generated yet"
+              description="Submit a prompt to see the candidate query, model metadata, and repair status."
+            />
+          )}
         </section>
 
         <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
@@ -160,19 +190,25 @@ export function CopilotPanel({ onSendToEditor }: CopilotPanelProps) {
             </p>
           </div>
 
-          <pre className="max-h-[320px] overflow-auto rounded-lg border border-slate-800 bg-slate-950 p-4 text-xs text-slate-200">
-            {JSON.stringify(response?.execution ?? { message: "No execution result." }, null, 2)}
-          </pre>
+          {response?.execution ? (
+            <pre className="max-h-[320px] overflow-auto rounded-lg border border-slate-800 bg-slate-950 p-4 text-xs text-slate-200">
+              {JSON.stringify(response.execution, null, 2)}
+            </pre>
+          ) : (
+            <EmptyPanel
+              title="No execution result yet"
+              description="Enable execution before generating if you want the backend to run the validated SQL."
+            />
+          )}
         </section>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-6 min-w-0">
         <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
           <div className="mb-4">
             <h2 className="text-lg font-semibold text-white">Assumptions</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Schema mappings and interpretation notes from the generated
-              candidate.
+              Schema mappings and interpretation notes from the generated candidate.
             </p>
           </div>
 
@@ -188,9 +224,10 @@ export function CopilotPanel({ onSendToEditor }: CopilotPanelProps) {
               ))}
             </ul>
           ) : (
-            <div className="rounded-lg border border-slate-800 bg-slate-950 p-4 text-sm text-slate-400">
-              No assumptions returned.
-            </div>
+            <EmptyPanel
+              title="No assumptions returned"
+              description="Assumptions will appear here when the copilot explains dataset or column mapping choices."
+            />
           )}
         </section>
 
@@ -206,13 +243,10 @@ export function CopilotPanel({ onSendToEditor }: CopilotPanelProps) {
             <div className="space-y-4">
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="rounded-lg border border-slate-800 bg-slate-950 p-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">
-                    Valid
-                  </p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Valid</p>
                   <p
-                    className={`mt-2 text-sm font-medium ${
-                      validation.is_valid ? "text-emerald-300" : "text-rose-300"
-                    }`}
+                    className={`mt-2 text-sm font-medium ${validation.is_valid ? "text-emerald-300" : "text-rose-300"
+                      }`}
                   >
                     {validation.is_valid ? "Yes" : "No"}
                   </p>
@@ -315,9 +349,10 @@ export function CopilotPanel({ onSendToEditor }: CopilotPanelProps) {
               </div>
             </div>
           ) : (
-            <div className="rounded-lg border border-slate-800 bg-slate-950 p-4 text-sm text-slate-400">
-              No validation result yet.
-            </div>
+            <EmptyPanel
+              title="No validation result yet"
+              description="Generate a candidate query to inspect normalized SQL, table references, and validation flags."
+            />
           )}
         </section>
 
@@ -325,8 +360,7 @@ export function CopilotPanel({ onSendToEditor }: CopilotPanelProps) {
           <div className="mb-4">
             <h2 className="text-lg font-semibold text-white">Repair history</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Retry steps recorded when the copilot repairs an invalid
-              candidate.
+              Retry steps recorded when the copilot repairs an invalid candidate.
             </p>
           </div>
 
@@ -350,11 +384,10 @@ export function CopilotPanel({ onSendToEditor }: CopilotPanelProps) {
                       Validation
                     </p>
                     <p
-                      className={`text-sm ${
-                        step.validation.is_valid
+                      className={`text-sm ${step.validation.is_valid
                           ? "text-emerald-300"
                           : "text-rose-300"
-                      }`}
+                        }`}
                     >
                       {step.validation.is_valid ? "Valid" : "Invalid"}
                     </p>
@@ -371,9 +404,10 @@ export function CopilotPanel({ onSendToEditor }: CopilotPanelProps) {
               ))}
             </div>
           ) : (
-            <div className="rounded-lg border border-slate-800 bg-slate-950 p-4 text-sm text-slate-400">
-              No repair history yet.
-            </div>
+            <EmptyPanel
+              title="No repair history yet"
+              description="Repair attempts will appear here when the copilot retries after an invalid candidate."
+            />
           )}
         </section>
       </div>

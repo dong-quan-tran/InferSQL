@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "./components/layout/app-shell";
 import { CatalogExplorer } from "./features/catalog/catalog-explorer";
@@ -46,7 +46,7 @@ function Sidebar({ activeView, onChangeView }: SidebarProps) {
         </p>
         <h1 className="mt-2 text-2xl font-semibold text-white">Workbench</h1>
         <p className="mt-2 text-sm text-slate-400">
-          Query, plan, execute, inspect.
+          Query, plan, execute, inspect, and demo.
         </p>
       </div>
 
@@ -73,7 +73,7 @@ function Sidebar({ activeView, onChangeView }: SidebarProps) {
         </button>
 
         <div className="rounded-lg px-3 py-2 text-sm text-slate-500">
-          Settings
+          Shortcuts: g q, g c, g p
         </div>
       </nav>
     </div>
@@ -89,9 +89,9 @@ function Header({ activeView }: { activeView: ActiveView }) {
   const datasets = datasetsQuery.data?.datasets ?? [];
 
   return (
-    <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
+    <div className="flex flex-col gap-3 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
       <div>
-        <p className="text-sm font-medium text-white">Phase F7</p>
+        <p className="text-sm font-medium text-white">Phase F9</p>
         <p className="text-xs text-slate-400">
           {activeView === "query"
             ? "Query workbench"
@@ -101,7 +101,7 @@ function Header({ activeView }: { activeView: ActiveView }) {
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
         <div className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-400">
           API: {API_BASE_URL}
         </div>
@@ -155,10 +155,56 @@ export default function App() {
   const [activeView, setActiveView] = useState<ActiveView>("query");
   const [sql, setSql] = useState(STARTER_SQL);
   const [history, setHistory] = useState<QueryHistoryEntry[]>(readInitialHistory);
+  const gotoPrefixRef = useRef(false);
 
   useEffect(() => {
     window.sessionStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
   }, [history]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+
+      if (
+        target?.isContentEditable ||
+        tagName === "input" ||
+        tagName === "textarea" ||
+        tagName === "select"
+      ) {
+        return;
+      }
+
+      if (gotoPrefixRef.current) {
+        if (event.key === "q") {
+          event.preventDefault();
+          setActiveView("query");
+        } else if (event.key === "c") {
+          event.preventDefault();
+          setActiveView("catalog");
+        } else if (event.key === "p") {
+          event.preventDefault();
+          setActiveView("copilot");
+        }
+
+        gotoPrefixRef.current = false;
+        return;
+      }
+
+      if (event.key === "g") {
+        gotoPrefixRef.current = true;
+        window.setTimeout(() => {
+          gotoPrefixRef.current = false;
+        }, 1200);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   const favoriteCount = useMemo(
     () => history.filter((item) => item.favorite).length,

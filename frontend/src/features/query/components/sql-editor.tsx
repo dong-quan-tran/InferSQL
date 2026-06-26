@@ -9,6 +9,14 @@ type SqlEditorProps = {
     isExecuting: boolean;
 };
 
+function shortcutLabel(label: string) {
+    return (
+        <span className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] text-slate-400">
+            {label}
+        </span>
+    );
+}
+
 export function SqlEditor({
     value,
     onChange,
@@ -19,13 +27,33 @@ export function SqlEditor({
     isPlanning,
     isExecuting,
 }: SqlEditorProps) {
+    function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+        if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey)) {
+            return;
+        }
+
+        event.preventDefault();
+
+        if (event.shiftKey) {
+            onPlan();
+            return;
+        }
+
+        if (event.altKey) {
+            onValidate();
+            return;
+        }
+
+        onExecute();
+    }
+
     return (
-        <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
-            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
+        <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5">
+            <div className="mb-4 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div className="min-w-0">
                     <h2 className="text-lg font-semibold text-white">SQL editor</h2>
                     <p className="mt-1 text-sm text-slate-400">
-                        Start with textarea-based query editing for F2.
+                        Write SQL, then run validate, plan, or execute without leaving the keyboard.
                     </p>
                 </div>
 
@@ -56,11 +84,19 @@ export function SqlEditor({
                 </div>
             </div>
 
+            <div className="mb-3 flex flex-wrap gap-2">
+                {shortcutLabel("Ctrl/Cmd + Enter → Execute")}
+                {shortcutLabel("Ctrl/Cmd + Shift + Enter → Plan")}
+                {shortcutLabel("Ctrl/Cmd + Alt + Enter → Validate")}
+            </div>
+
             <textarea
                 value={value}
                 onChange={(event) => onChange(event.target.value)}
+                onKeyDown={handleKeyDown}
                 spellCheck={false}
-                className="min-h-[320px] w-full rounded-lg border border-slate-800 bg-slate-950 p-4 font-mono text-sm text-slate-100 outline-none transition focus:border-cyan-500"
+                placeholder="Write a query against a registered dataset..."
+                className="min-h-[260px] w-full rounded-lg border border-slate-800 bg-slate-950 p-4 font-mono text-sm text-slate-100 outline-none transition focus:border-cyan-500 sm:min-h-[320px]"
             />
         </section>
     );

@@ -10,6 +10,21 @@ type CatalogExplorerProps = {
     onInsertSql: (sql: string) => void;
 };
 
+function EmptyState({
+    title,
+    description,
+}: {
+    title: string;
+    description: string;
+}) {
+    return (
+        <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900/60 p-5">
+            <h2 className="text-base font-medium text-white">{title}</h2>
+            <p className="mt-2 text-sm text-slate-400">{description}</p>
+        </div>
+    );
+}
+
 export function CatalogExplorer({ onInsertSql }: CatalogExplorerProps) {
     const [selectedName, setSelectedName] = useState<string | null>(null);
 
@@ -46,7 +61,7 @@ export function CatalogExplorer({ onInsertSql }: CatalogExplorerProps) {
     }
 
     return (
-        <div className="grid gap-6 p-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <div className="grid gap-6 p-4 sm:p-6 xl:grid-cols-[320px_minmax(0,1fr)]">
             <div className="space-y-6">
                 {datasetsQuery.isLoading ? (
                     <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 text-sm text-slate-400">
@@ -54,8 +69,13 @@ export function CatalogExplorer({ onInsertSql }: CatalogExplorerProps) {
                     </div>
                 ) : datasetsQuery.isError ? (
                     <div className="rounded-xl border border-rose-900 bg-rose-950/40 p-5 text-sm text-rose-200">
-                        Failed to load datasets.
+                        Dataset catalog is unavailable right now. Check the API connection and try again.
                     </div>
+                ) : datasets.length === 0 ? (
+                    <EmptyState
+                        title="No datasets registered"
+                        description="Ingest a local path or upload a file to populate the catalog and unlock SQL suggestions."
+                    />
                 ) : (
                     <DatasetList
                         datasets={datasets}
@@ -68,14 +88,19 @@ export function CatalogExplorer({ onInsertSql }: CatalogExplorerProps) {
                 <UploadIngestForm onSuccess={handleDatasetIngested} />
             </div>
 
-            <div>
-                {detailQuery.isLoading ? (
+            <div className="min-w-0">
+                {!selectedName && !datasets.length ? (
+                    <EmptyState
+                        title="Choose a dataset"
+                        description="Dataset schema, columns, and sample-driven SQL helpers will appear here after ingest."
+                    />
+                ) : detailQuery.isLoading ? (
                     <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 text-sm text-slate-400">
                         Loading dataset detail...
                     </div>
                 ) : detailQuery.isError ? (
                     <div className="rounded-xl border border-rose-900 bg-rose-950/40 p-5 text-sm text-rose-200">
-                        Failed to load dataset detail.
+                        Failed to load dataset detail for the selected dataset.
                     </div>
                 ) : (
                     <DatasetDetail
