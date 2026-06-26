@@ -374,11 +374,11 @@ Status: [x]
 - [x] Add quick actions to insert example SQL into the editor.
 
 ### Phase F4 – Ingestion UI
-Status: [ ]
+Status: [x]
 
-- [ ] Add local-path ingest form for `/catalog/ingest`.
-- [ ] Add upload form for `/catalog/upload`.
-- [ ] Add overwrite toggle and refresh catalog on success.
+- [x] Add local-path ingest form for `/catalog/ingest`.
+- [x] Add upload form for `/catalog/upload`.
+- [x] Add overwrite toggle and refresh catalog on success.
 
 ### Phase F5 – Copilot UI
 Status: [ ]

@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchDatasetDetail, fetchDatasets } from "./api";
 import { DatasetDetail } from "./components/dataset-detail";
 import { DatasetList } from "./components/dataset-list";
+import { LocalPathIngestForm } from "./components/local-path-ingest-form";
+import { UploadIngestForm } from "./components/upload-ingest-form";
 
 type CatalogExplorerProps = {
     onInsertSql: (sql: string) => void;
@@ -21,6 +23,15 @@ export function CatalogExplorer({ onInsertSql }: CatalogExplorerProps) {
     useEffect(() => {
         if (!selectedName && datasets.length > 0) {
             setSelectedName(datasets[0].name);
+            return;
+        }
+
+        if (
+            selectedName &&
+            datasets.length > 0 &&
+            !datasets.some((dataset) => dataset.name === selectedName)
+        ) {
+            setSelectedName(datasets[0].name);
         }
     }, [datasets, selectedName]);
 
@@ -32,7 +43,7 @@ export function CatalogExplorer({ onInsertSql }: CatalogExplorerProps) {
 
     return (
         <div className="grid gap-6 p-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-            <div>
+            <div className="space-y-6">
                 {datasetsQuery.isLoading ? (
                     <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 text-sm text-slate-400">
                         Loading datasets...
@@ -48,6 +59,9 @@ export function CatalogExplorer({ onInsertSql }: CatalogExplorerProps) {
                         onSelect={setSelectedName}
                     />
                 )}
+
+                <LocalPathIngestForm />
+                <UploadIngestForm />
             </div>
 
             <div>
