@@ -1,10 +1,5 @@
 import { useMemo, useState } from "react";
-import type {
-    ExecuteResponse,
-    PlanNode,
-    PlanResponse,
-    QueryDebug,
-} from "../../../types/query";
+import type { PlanNode, QueryDebug } from "../../../types/query";
 
 type ResponsePanelProps = {
     title: string;
@@ -32,6 +27,44 @@ function hasPhysicalPlan(
     value: unknown,
 ): value is { physical_plan?: PlanNode | null } {
     return isObject(value) && "physical_plan" in value;
+}
+
+function extractDebug(
+    value: unknown,
+): QueryDebug | undefined {
+    if (hasDebug(value) && value.debug) {
+        return value.debug;
+    }
+
+    if (
+        isObject(value) &&
+        "error" in value &&
+        isObject(value.error) &&
+        "debug" in value.error &&
+        isObject(value.error.debug)
+    ) {
+        return value.error.debug as QueryDebug;
+    }
+
+    return undefined;
+}
+
+function extractRequestId(value: unknown): string | undefined {
+    if (isObject(value) && "request_id" in value && typeof value.request_id === "string") {
+        return value.request_id;
+    }
+
+    if (
+        isObject(value) &&
+        "error" in value &&
+        isObject(value.error) &&
+        "request_id" in value.error &&
+        typeof value.error.request_id === "string"
+    ) {
+        return value.error.request_id;
+    }
+
+    return undefined;
 }
 
 function renderPlanNode(node: PlanNode, depth = 0): string[] {
@@ -62,6 +95,29 @@ function formatJson(value: unknown): string {
     return JSON.stringify(value, null, 2);
 }
 
+function formatMs(value?: number): string {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+        return "unknown";
+    }
+
+    return `${value.toFixed(2)} ms`;
+}
+
+function SummaryCard({
+    label,
+    value,
+}: {
+    label: string;
+    value: string;
+}) {
+    return (
+        <div className="rounded-lg border border-slate-800 bg-slate-950 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p>
+            <p className="mt-2 break-words text-sm text-slate-200">{value}</p>
+        </div>
+    );
+}
+
 export function ResponsePanel({
     title,
     subtitle,
@@ -80,12 +136,15 @@ export function ResponsePanel({
             items.push("physical");
         }
 
-        if (hasDebug(data) && data.debug) {
+        if (extractDebug(data)) {
             items.push("debug");
         }
 
         return items;
     }, [data]);
+
+    const debug = useMemo(() => extractDebug(data), [data]);
+    const requestId = useMemo(() => extractRequestId(data), [data]);
 
     const displayText = useMemo(() => {
         switch (viewMode) {
@@ -98,16 +157,15 @@ export function ResponsePanel({
                     ? formatPlan(data.physical_plan)
                     : "No physical plan available.";
             case "debug":
-                return hasDebug(data) && data.debug
-                    ? formatJson(data.debug)
-                    : "No debug output available.";
+                return debug ? formatJson(debug) : "No debug output available.";
             case "response":
             default:
                 return formatJson(data);
         }
-    }, [data, viewMode]);
+    }, [data, debug, viewMode]);
 
     const activeView = tabs.includes(viewMode) ? viewMode : "response";
+    const features = debug?.features ?? [];
 
     return (
         <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
@@ -117,6 +175,25 @@ export function ResponsePanel({
                     <p className="mt-1 text-sm text-slate-400">{subtitle}</p>
                 ) : null}
             </div>
+
+            {debug || requestId ? (
+                <div className="mb-4 space-y-3">
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        <SummaryCard label="Engine" value={debug?.engine ?? "unknown"} />
+                        <SummaryCard label="Stage" value={debug?.stage ?? "unknown"} />
+                        <SummaryCard label="Timing" value={formatMs(debug?.total_ms)} />
+                        <SummaryCard label="Request ID" value={requestId ?? "unknown"} />
+                        <SummaryCard
+                            label="Error origin"
+                            value={debug?.error_origin ?? "none"}
+                        />
+                        <SummaryCard
+                            label="Features"
+                            value={features.length ? features.join(", ") : "none"}
+                        />
+                    </div>
+                </div>
+            ) : null}
 
             <div className="mb-4 flex flex-wrap gap-2">
                 {tabs.map((tab) => (

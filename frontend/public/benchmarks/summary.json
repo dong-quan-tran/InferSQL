@@ -1,0 +1,20 @@
+[
+    {
+        "query_shape": "filter_project_limit",
+        "rows": 1000,
+        "engine": "datafusion",
+        "total_ms": 4.8
+    },
+    {
+        "query_shape": "aggregate_group_by",
+        "rows": 10000,
+        "engine": "datafusion",
+        "total_ms": 12.6
+    },
+    {
+        "query_shape": "join",
+        "rows": 100000,
+        "engine": "datafusion",
+        "total_ms": 38.4
+    }
+]

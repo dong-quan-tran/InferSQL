@@ -9,6 +9,7 @@ import type {
     ValidateResponse,
 } from "../../types/query";
 import { executeSql, planSql, validateSql } from "./api";
+import { BenchmarkViewer } from "./components/benchmark-viewer";
 import { QueryHistory } from "./components/query-history";
 import { ResponsePanel } from "./components/response-panel";
 import { ResultChart } from "./components/result-chart";
@@ -186,6 +187,8 @@ export function QueryWorkbench({
                     onDelete={onDeleteHistory}
                     onClear={onClearHistory}
                 />
+
+                <BenchmarkViewer />
 
                 <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
                     <div className="mb-4">

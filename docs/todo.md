@@ -394,17 +394,17 @@ Status: [ ]
 - [ ] Improve session continuity for repeated experimentation.
 
 ### Phase F7 – Result UX and Visualization
-Status: [ ]
+Status: [x]
 
-- [ ] Improve result table usability.
-- [ ] Add CSV export and lightweight charts for aggregate outputs.
-- [ ] Add a better plan/debug viewer.
+- [x] Improve result table usability.
+- [x] Add CSV export and lightweight charts for aggregate outputs.
+- [x] Add a better plan/debug viewer.
 
 ### Phase F8 – Observability UI
-Status: [ ]
+Status: [x]
 
-- [ ] Surface engine, stage, timing, and feature debug metadata clearly.
-- [ ] Add benchmark artifact viewing for Phase 12 outputs.
+- [x] Surface engine, stage, timing, and feature debug metadata clearly.
+- [x] Add benchmark artifact viewing for Phase 12 outputs.
 
 ### Phase F9 – Polish
 Status: [ ]

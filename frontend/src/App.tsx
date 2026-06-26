@@ -91,7 +91,7 @@ function Header({ activeView }: { activeView: ActiveView }) {
   return (
     <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
       <div>
-        <p className="text-sm font-medium text-white">Phase F6</p>
+        <p className="text-sm font-medium text-white">Phase F7</p>
         <p className="text-xs text-slate-400">
           {activeView === "query"
             ? "Query workbench"
