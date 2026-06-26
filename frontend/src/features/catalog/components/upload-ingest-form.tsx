@@ -22,7 +22,11 @@ function getErrorMessage(error: unknown): string {
     return "Unknown error";
 }
 
-export function UploadIngestForm() {
+type UploadIngestFormProps = {
+    onSuccess?: (datasetName: string) => void;
+};
+
+export function UploadIngestForm({ onSuccess }: UploadIngestFormProps) {
     const queryClient = useQueryClient();
 
     const [name, setName] = useState("");
@@ -43,13 +47,16 @@ export function UploadIngestForm() {
                 file,
             });
         },
-        onSuccess: async () => {
+        onSuccess: async (data) => {
+            const uploadedName = data.name;
+
             setName("");
             setDescription("");
             setOverwrite(false);
             setFile(null);
 
             await queryClient.invalidateQueries({ queryKey: ["catalog-datasets"] });
+            onSuccess?.(uploadedName);
         },
     });
 

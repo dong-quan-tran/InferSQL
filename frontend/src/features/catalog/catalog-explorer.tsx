@@ -41,6 +41,10 @@ export function CatalogExplorer({ onInsertSql }: CatalogExplorerProps) {
         enabled: !!selectedName,
     });
 
+    function handleDatasetIngested(datasetName: string) {
+        setSelectedName(datasetName);
+    }
+
     return (
         <div className="grid gap-6 p-6 xl:grid-cols-[320px_minmax(0,1fr)]">
             <div className="space-y-6">
@@ -60,8 +64,8 @@ export function CatalogExplorer({ onInsertSql }: CatalogExplorerProps) {
                     />
                 )}
 
-                <LocalPathIngestForm />
-                <UploadIngestForm />
+                <LocalPathIngestForm onSuccess={handleDatasetIngested} />
+                <UploadIngestForm onSuccess={handleDatasetIngested} />
             </div>
 
             <div>

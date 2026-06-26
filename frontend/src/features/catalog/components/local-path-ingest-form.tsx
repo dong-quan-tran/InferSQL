@@ -22,7 +22,13 @@ function getErrorMessage(error: unknown): string {
     return "Unknown error";
 }
 
-export function LocalPathIngestForm() {
+type LocalPathIngestFormProps = {
+    onSuccess?: (datasetName: string) => void;
+};
+
+export function LocalPathIngestForm({
+    onSuccess,
+}: LocalPathIngestFormProps) {
     const queryClient = useQueryClient();
 
     const [name, setName] = useState("");
@@ -38,13 +44,16 @@ export function LocalPathIngestForm() {
                 description: description.trim(),
                 overwrite,
             }),
-        onSuccess: async () => {
+        onSuccess: async (data) => {
+            const ingestedName = data.name;
+
             setName("");
             setPath("");
             setDescription("");
             setOverwrite(false);
 
             await queryClient.invalidateQueries({ queryKey: ["catalog-datasets"] });
+            onSuccess?.(ingestedName);
         },
     });
 
