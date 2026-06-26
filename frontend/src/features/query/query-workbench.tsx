@@ -13,13 +13,12 @@ import { ResponsePanel } from "./components/response-panel";
 import { ResultTable } from "./components/result-table";
 import { SqlEditor } from "./components/sql-editor";
 
-const STARTER_SQL = `SELECT symbol, close
-FROM prices
-WHERE close > 100
-ORDER BY close DESC
-LIMIT 10`;
-
 type ActiveTab = "validate" | "plan" | "execute" | "error";
+
+type QueryWorkbenchProps = {
+    sql: string;
+    onSqlChange: (value: string) => void;
+};
 
 function extractErrorPayload(
     error: unknown,
@@ -39,8 +38,10 @@ function extractErrorPayload(
     return { message: "Unknown error" };
 }
 
-export function QueryWorkbench() {
-    const [sql, setSql] = useState(STARTER_SQL);
+export function QueryWorkbench({
+    sql,
+    onSqlChange,
+}: QueryWorkbenchProps) {
     const [history, setHistory] = useState<string[]>([]);
     const [activeTab, setActiveTab] = useState<ActiveTab>("execute");
 
@@ -120,7 +121,7 @@ export function QueryWorkbench() {
             <div className="space-y-6">
                 <SqlEditor
                     value={sql}
-                    onChange={setSql}
+                    onChange={onSqlChange}
                     onValidate={handleValidate}
                     onPlan={handlePlan}
                     onExecute={handleExecute}
@@ -179,7 +180,7 @@ export function QueryWorkbench() {
             </div>
 
             <div className="space-y-6">
-                <QueryHistory items={history} onSelect={setSql} />
+                <QueryHistory items={history} onSelect={onSqlChange} />
 
                 <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
                     <div className="mb-4">

@@ -367,11 +367,11 @@ Status: [x]
 - [x] Add in-memory query history.
 
 ### Phase F3 – Catalog Explorer
-Status: [ ]
+Status: [x]
 
-- [ ] Build dataset list and dataset detail views from catalog endpoints.
-- [ ] Show schema, types, descriptions, row counts, and samples where available.
-- [ ] Add quick actions to insert example SQL into the editor.
+- [x] Build dataset list and dataset detail views from catalog endpoints.
+- [x] Show schema, types, descriptions, row counts, and samples where available.
+- [x] Add quick actions to insert example SQL into the editor.
 
 ### Phase F4 – Ingestion UI
 Status: [ ]

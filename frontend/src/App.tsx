@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "./components/layout/app-shell";
+import { CatalogExplorer } from "./features/catalog/catalog-explorer";
 import { QueryWorkbench } from "./features/query/query-workbench";
 import { apiGet, API_BASE_URL, ApiError } from "./lib/api/client";
 
@@ -13,7 +15,25 @@ type CatalogDatasetsResponse = {
   datasets?: CatalogDataset[];
 };
 
-function Sidebar() {
+type ActiveView = "query" | "catalog";
+
+const STARTER_SQL = `SELECT symbol, close
+FROM prices
+WHERE close > 100
+ORDER BY close DESC
+LIMIT 10`;
+
+type SidebarProps = {
+  activeView: ActiveView;
+  onChangeView: (view: ActiveView) => void;
+};
+
+function Sidebar({ activeView, onChangeView }: SidebarProps) {
+  const navItemClass = (view: ActiveView) =>
+    activeView === view
+      ? "rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-200"
+      : "rounded-lg px-3 py-2 text-sm text-slate-500 hover:bg-slate-900/40 hover:text-slate-300";
+
   return (
     <div className="p-5">
       <div className="mb-8">
@@ -27,12 +47,20 @@ function Sidebar() {
       </div>
 
       <nav className="space-y-2">
-        <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-200">
+        <button
+          onClick={() => onChangeView("query")}
+          className={`block w-full text-left transition ${navItemClass("query")}`}
+        >
           Query Workbench
-        </div>
-        <div className="rounded-lg px-3 py-2 text-sm text-slate-500">
+        </button>
+
+        <button
+          onClick={() => onChangeView("catalog")}
+          className={`block w-full text-left transition ${navItemClass("catalog")}`}
+        >
           Catalog Explorer
-        </div>
+        </button>
+
         <div className="rounded-lg px-3 py-2 text-sm text-slate-500">
           Copilot
         </div>
@@ -44,7 +72,7 @@ function Sidebar() {
   );
 }
 
-function Header() {
+function Header({ activeView }: { activeView: ActiveView }) {
   const datasetsQuery = useQuery({
     queryKey: ["catalog-datasets"],
     queryFn: () => apiGet<CatalogDatasetsResponse>("/catalog/datasets"),
@@ -55,9 +83,9 @@ function Header() {
   return (
     <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
       <div>
-        <p className="text-sm font-medium text-white">Phase F2</p>
+        <p className="text-sm font-medium text-white">Phase F3</p>
         <p className="text-xs text-slate-400">
-          Query workbench MVP
+          {activeView === "query" ? "Query workbench" : "Catalog explorer"}
         </p>
       </div>
 
@@ -83,9 +111,26 @@ function Header() {
 }
 
 export default function App() {
+  const [activeView, setActiveView] = useState<ActiveView>("query");
+  const [sql, setSql] = useState(STARTER_SQL);
+
+  function handleInsertSql(nextSql: string) {
+    setSql(nextSql);
+    setActiveView("query");
+  }
+
   return (
-    <AppShell sidebar={<Sidebar />} header={<Header />}>
-      <QueryWorkbench />
+    <AppShell
+      sidebar={
+        <Sidebar activeView={activeView} onChangeView={setActiveView} />
+      }
+      header={<Header activeView={activeView} />}
+    >
+      {activeView === "query" ? (
+        <QueryWorkbench sql={sql} onSqlChange={setSql} />
+      ) : (
+        <CatalogExplorer onInsertSql={handleInsertSql} />
+      )}
     </AppShell>
   );
 }
