@@ -11,6 +11,7 @@ import type {
 import { executeSql, planSql, validateSql } from "./api";
 import { QueryHistory } from "./components/query-history";
 import { ResponsePanel } from "./components/response-panel";
+import { ResultChart } from "./components/result-chart";
 import { ResultTable } from "./components/result-table";
 import { SqlEditor } from "./components/sql-editor";
 
@@ -172,7 +173,7 @@ export function QueryWorkbench({
 
                 <ResponsePanel
                     title="Response"
-                    subtitle="Raw JSON response from the selected action."
+                    subtitle="Structured response, plans, and debug output for the selected action."
                     data={panelData}
                 />
             </div>
@@ -188,19 +189,23 @@ export function QueryWorkbench({
 
                 <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
                     <div className="mb-4">
-                        <h2 className="text-lg font-semibold text-white">
-                            Latest execute rows
-                        </h2>
+                        <h2 className="text-lg font-semibold text-white">Aggregate chart</h2>
                         <p className="mt-1 text-sm text-slate-400">
-                            Convenience view for the most recent execute result.
+                            Lightweight chart for simple aggregate-style execute results.
                         </p>
                     </div>
 
-                    <ResultTable
+                    <ResultChart
                         columns={executeMutation.data?.columns ?? []}
                         rows={executeMutation.data?.rows ?? []}
                     />
                 </section>
+
+                <ResultTable
+                    title="Latest execute rows"
+                    columns={executeMutation.data?.columns ?? []}
+                    rows={executeMutation.data?.rows ?? []}
+                />
             </div>
         </div>
     );
