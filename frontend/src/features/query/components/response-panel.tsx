@@ -4,7 +4,11 @@ type ResponsePanelProps = {
     data: unknown;
 };
 
-export function ResponsePanel({ title, subtitle, data }: ResponsePanelProps) {
+export function ResponsePanel({
+    title,
+    subtitle,
+    data,
+}: ResponsePanelProps) {
     return (
         <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
             <div className="mb-4">

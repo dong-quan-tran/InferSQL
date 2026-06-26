@@ -357,13 +357,14 @@ Status: [x]
 - [x] Add app shell layout and backend base URL configuration.
 - [x] Add shared loading and normalized error components.
 
-### Phase F2 – Query Workbench MVP
-Status: [ ]
+### Phase F2 – Query workbench MVP
+Status: [x]
 
-- [ ] Build a SQL editor workbench with Monaco.
-- [ ] Wire `/query/validate`, `/query/plan`, and `/query/execute`.
-- [ ] Render result rows, plan output, debug metadata, and normalized errors.
-- [ ] Add in-memory query history.
+- [x] Add editable SQL input.
+- [x] Wire `validate`, `plan`, and `execute` actions to backend endpoints.
+- [x] Show raw JSON responses for validate/plan/execute.
+- [x] Show normalized backend errors.
+- [x] Add in-memory query history.
 
 ### Phase F3 – Catalog Explorer
 Status: [ ]

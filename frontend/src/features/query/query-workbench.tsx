@@ -10,6 +10,7 @@ import type {
 import { executeSql, planSql, validateSql } from "./api";
 import { QueryHistory } from "./components/query-history";
 import { ResponsePanel } from "./components/response-panel";
+import { ResultTable } from "./components/result-table";
 import { SqlEditor } from "./components/sql-editor";
 
 const STARTER_SQL = `SELECT symbol, close
@@ -20,7 +21,9 @@ LIMIT 10`;
 
 type ActiveTab = "validate" | "plan" | "execute" | "error";
 
-function extractErrorPayload(error: unknown): ErrorResponse | { message: string } {
+function extractErrorPayload(
+    error: unknown,
+): ErrorResponse | { message: string } {
     if (error instanceof ApiError) {
         if (typeof error.payload === "object" && error.payload !== null) {
             return error.payload as ErrorResponse;
@@ -41,11 +44,13 @@ export function QueryWorkbench() {
     const [history, setHistory] = useState<string[]>([]);
     const [activeTab, setActiveTab] = useState<ActiveTab>("execute");
 
-    const validateMutation = useMutation<ValidateResponse, Error, { sql: string }>({
-        mutationFn: validateSql,
-        onSuccess: () => setActiveTab("validate"),
-        onError: () => setActiveTab("error"),
-    });
+    const validateMutation = useMutation<ValidateResponse, Error, { sql: string }>(
+        {
+            mutationFn: validateSql,
+            onSuccess: () => setActiveTab("validate"),
+            onError: () => setActiveTab("error"),
+        },
+    );
 
     const planMutation = useMutation<PlanResponse, Error, { sql: string }>({
         mutationFn: planSql,
@@ -53,13 +58,16 @@ export function QueryWorkbench() {
         onError: () => setActiveTab("error"),
     });
 
-    const executeMutation = useMutation<ExecuteResponse, Error, { sql: string }>({
-        mutationFn: executeSql,
-        onSuccess: () => setActiveTab("execute"),
-        onError: () => setActiveTab("error"),
-    });
+    const executeMutation = useMutation<ExecuteResponse, Error, { sql: string }>(
+        {
+            mutationFn: executeSql,
+            onSuccess: () => setActiveTab("execute"),
+            onError: () => setActiveTab("error"),
+        },
+    );
 
-    const latestError = validateMutation.error || planMutation.error || executeMutation.error;
+    const latestError =
+        validateMutation.error || planMutation.error || executeMutation.error;
 
     const panelData = useMemo(() => {
         switch (activeTab) {
@@ -173,11 +181,21 @@ export function QueryWorkbench() {
             <div className="space-y-6">
                 <QueryHistory items={history} onSelect={setSql} />
 
-                <ResponsePanel
-                    title="Latest execute rows"
-                    subtitle="Convenience view for the most recent execute result."
-                    data={executeMutation.data?.rows ?? []}
-                />
+                <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
+                    <div className="mb-4">
+                        <h2 className="text-lg font-semibold text-white">
+                            Latest execute rows
+                        </h2>
+                        <p className="mt-1 text-sm text-slate-400">
+                            Convenience view for the most recent execute result.
+                        </p>
+                    </div>
+
+                    <ResultTable
+                        columns={executeMutation.data?.columns ?? []}
+                        rows={executeMutation.data?.rows ?? []}
+                    />
+                </section>
             </div>
         </div>
     );
