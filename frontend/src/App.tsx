@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "./components/layout/app-shell";
 import { CatalogExplorer } from "./features/catalog/catalog-explorer";
+import { CopilotPanel } from "./features/copilot/copilot-panel";
 import { QueryWorkbench } from "./features/query/query-workbench";
 import { apiGet, API_BASE_URL, ApiError } from "./lib/api/client";
 
@@ -15,7 +16,7 @@ type CatalogDatasetsResponse = {
   datasets?: CatalogDataset[];
 };
 
-type ActiveView = "query" | "catalog";
+type ActiveView = "query" | "catalog" | "copilot";
 
 const STARTER_SQL = `SELECT symbol, close
 FROM prices
@@ -61,9 +62,13 @@ function Sidebar({ activeView, onChangeView }: SidebarProps) {
           Catalog Explorer
         </button>
 
-        <div className="rounded-lg px-3 py-2 text-sm text-slate-500">
+        <button
+          onClick={() => onChangeView("copilot")}
+          className={`block w-full text-left transition ${navItemClass("copilot")}`}
+        >
           Copilot
-        </div>
+        </button>
+
         <div className="rounded-lg px-3 py-2 text-sm text-slate-500">
           Settings
         </div>
@@ -83,9 +88,13 @@ function Header({ activeView }: { activeView: ActiveView }) {
   return (
     <div className="flex flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
       <div>
-        <p className="text-sm font-medium text-white">Phase F4</p>
+        <p className="text-sm font-medium text-white">Phase F5</p>
         <p className="text-xs text-slate-400">
-          {activeView === "query" ? "Query workbench" : "Catalog explorer"}
+          {activeView === "query"
+            ? "Query workbench"
+            : activeView === "catalog"
+              ? "Catalog explorer"
+              : "Copilot"}
         </p>
       </div>
 
@@ -128,8 +137,10 @@ export default function App() {
     >
       {activeView === "query" ? (
         <QueryWorkbench sql={sql} onSqlChange={setSql} />
-      ) : (
+      ) : activeView === "catalog" ? (
         <CatalogExplorer onInsertSql={handleInsertSql} />
+      ) : (
+        <CopilotPanel onSendToEditor={handleInsertSql} />
       )}
     </AppShell>
   );

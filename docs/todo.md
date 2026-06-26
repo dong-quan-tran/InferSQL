@@ -381,11 +381,11 @@ Status: [x]
 - [x] Add overwrite toggle and refresh catalog on success.
 
 ### Phase F5 – Copilot UI
-Status: [ ]
+Status: [x]
 
-- [ ] Add NL→SQL prompt input and generated SQL display.
-- [ ] Show assumptions, validation output, and optional execution result.
-- [ ] Add “send to editor” and repair-history display.
+- [x] Add NL→SQL prompt input and generated SQL display.
+- [x] Show assumptions, validation output, and optional execution result.
+- [x] Add “send to editor” and repair-history display.
 
 ### Phase F6 – Query History
 Status: [ ]
