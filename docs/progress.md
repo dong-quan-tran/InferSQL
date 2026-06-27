@@ -769,3 +769,48 @@ Wrapped up Phase 10 for InferSQL backend work: error handling, debug metadata, c
     - Inspect datasets and schema in Catalog Explorer.
     - Click a quick action to insert example SQL.
     - Land back in the Query Workbench with the SQL prefilled and ready to validate/plan/execute.s
+
+
+Progress log: 06/26/2026
+
+Implemented a SavedSnippet model with local browser persistence, distinct from session-based query history.
+
+Added a Saved Snippets panel to the query workbench:
+
+Save current editor SQL as a named snippet.
+
+Load snippet SQL into the editor.
+
+Rename snippets.
+
+Pin/unpin (favorite) snippets.
+
+Delete snippets.
+
+Kept query history and saved snippets conceptually and technically separate:
+
+History stored in sessionStorage.
+
+Snippets stored in localStorage.
+
+Rewired the “Save query” behavior so it now creates durable saved snippets, not just history entries.
+
+Implemented snapshot capture for saved snippets:
+
+For SQL matching a saved snippet, record the latest validate, plan, execute, and error responses as a snippet snapshot.
+
+Added a Snippet compare panel in the workbench:
+
+Select a snippet and view tabs for validate, plan, execute, and error snapshots.
+
+Shows summary metadata (snippet name, last captured timestamp) and pretty-printed JSON/plan text.
+
+Updated query history copy to clearly describe session history instead of “saved queries”.
+
+Verified that Phase F6 checklist items are now satisfied:
+
+Query history list, load-into-editor, favorites, and session continuity.
+
+Saved named snippets with local persistence and management.
+
+Lightweight validate/plan/execute output comparison for a selected snippet.
