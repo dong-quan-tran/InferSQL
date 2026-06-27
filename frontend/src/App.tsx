@@ -5,10 +5,13 @@ import { CatalogExplorer } from "./features/catalog/catalog-explorer";
 import { CopilotPanel } from "./features/copilot/copilot-panel";
 import { QueryWorkbench } from "./features/query/query-workbench";
 import { apiGet, API_BASE_URL, ApiError } from "./lib/api/client";
-import type {
-  QueryHistoryEntry,
-  QueryHistorySource,
-  SavedSnippet,
+import {
+  isQueryHistoryEntry,
+  isSavedSnippet,
+  type QueryHistoryEntry,
+  type QueryHistorySource,
+  type SavedSnippet,
+  type SavedSnippetSnapshot,
 } from "./types/history";
 
 type CatalogDataset = {
@@ -124,42 +127,6 @@ function Header({ activeView }: { activeView: ActiveView }) {
         ) : null}
       </div>
     </div>
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isQueryHistorySource(value: unknown): value is QueryHistorySource {
-  return (
-    value === "validate" ||
-    value === "plan" ||
-    value === "execute" ||
-    value === "copilot"
-  );
-}
-
-function isQueryHistoryEntry(value: unknown): value is QueryHistoryEntry {
-  return (
-    isRecord(value) &&
-    typeof value.id === "string" &&
-    typeof value.sql === "string" &&
-    isQueryHistorySource(value.source) &&
-    typeof value.createdAt === "string" &&
-    typeof value.favorite === "boolean"
-  );
-}
-
-function isSavedSnippet(value: unknown): value is SavedSnippet {
-  return (
-    isRecord(value) &&
-    typeof value.id === "string" &&
-    typeof value.name === "string" &&
-    typeof value.sql === "string" &&
-    typeof value.createdAt === "string" &&
-    typeof value.updatedAt === "string" &&
-    typeof value.favorite === "boolean"
   );
 }
 
@@ -391,6 +358,29 @@ export default function App() {
     setSnippets((current) => current.filter((item) => item.id !== id));
   }
 
+  function saveSnippetSnapshot(sqlText: string, snapshot: SavedSnippetSnapshot) {
+    const trimmed = sqlText.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    setSnippets((current) =>
+      current.map((item) =>
+        item.sql === trimmed
+          ? {
+            ...item,
+            updatedAt: new Date().toISOString(),
+            snapshot: {
+              ...item.snapshot,
+              ...snapshot,
+              lastRunAt: new Date().toISOString(),
+            },
+          }
+          : item,
+      ),
+    );
+  }
+
   function handleInsertSql(nextSql: string) {
     setSql(nextSql);
     setActiveView("query");
@@ -416,6 +406,7 @@ export default function App() {
           snippets={snippets}
           onSaveHistory={saveHistory}
           onSaveSnippet={saveSnippet}
+          onSaveSnippetSnapshot={saveSnippetSnapshot}
           onRenameSnippet={renameSnippet}
           onToggleSnippetFavorite={toggleSnippetFavorite}
           onDeleteSnippet={deleteSnippet}

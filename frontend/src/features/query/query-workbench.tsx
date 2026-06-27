@@ -5,6 +5,7 @@ import type {
     QueryHistoryEntry,
     QueryHistorySource,
     SavedSnippet,
+    SavedSnippetSnapshot,
 } from "../../types/history";
 import type {
     ErrorResponse,
@@ -19,6 +20,7 @@ import { ResponsePanel } from "./components/response-panel";
 import { ResultChart } from "./components/result-chart";
 import { ResultTable } from "./components/result-table";
 import { SavedSnippets } from "./components/saved-snippets";
+import { SnippetComparePanel } from "./components/snippet-compare-panel";
 import { SqlEditor } from "./components/sql-editor";
 
 type ActiveTab = "validate" | "plan" | "execute" | "error";
@@ -30,6 +32,7 @@ type QueryWorkbenchProps = {
     snippets: SavedSnippet[];
     onSaveHistory: (sql: string, source: QueryHistorySource) => void;
     onSaveSnippet: (sql: string) => void;
+    onSaveSnippetSnapshot: (sql: string, snapshot: SavedSnippetSnapshot) => void;
     onRenameSnippet: (id: string, name: string) => void;
     onToggleSnippetFavorite: (id: string) => void;
     onDeleteSnippet: (id: string) => void;
@@ -63,6 +66,7 @@ export function QueryWorkbench({
     snippets,
     onSaveHistory,
     onSaveSnippet,
+    onSaveSnippetSnapshot,
     onRenameSnippet,
     onToggleSnippetFavorite,
     onDeleteSnippet,
@@ -71,23 +75,42 @@ export function QueryWorkbench({
     onClearHistory,
 }: QueryWorkbenchProps) {
     const [activeTab, setActiveTab] = useState<ActiveTab>("execute");
+    const [selectedSnippetId, setSelectedSnippetId] = useState<string | null>(null);
 
     const validateMutation = useMutation<ValidateResponse, Error, { sql: string }>({
         mutationFn: validateSql,
-        onSuccess: () => setActiveTab("validate"),
-        onError: () => setActiveTab("error"),
+        onSuccess: (data, variables) => {
+            setActiveTab("validate");
+            onSaveSnippetSnapshot(variables.sql, { validate: data });
+        },
+        onError: (error, variables) => {
+            setActiveTab("error");
+            onSaveSnippetSnapshot(variables.sql, { error: extractErrorPayload(error) });
+        },
     });
 
     const planMutation = useMutation<PlanResponse, Error, { sql: string }>({
         mutationFn: planSql,
-        onSuccess: () => setActiveTab("plan"),
-        onError: () => setActiveTab("error"),
+        onSuccess: (data, variables) => {
+            setActiveTab("plan");
+            onSaveSnippetSnapshot(variables.sql, { plan: data });
+        },
+        onError: (error, variables) => {
+            setActiveTab("error");
+            onSaveSnippetSnapshot(variables.sql, { error: extractErrorPayload(error) });
+        },
     });
 
     const executeMutation = useMutation<ExecuteResponse, Error, { sql: string }>({
         mutationFn: executeSql,
-        onSuccess: () => setActiveTab("execute"),
-        onError: () => setActiveTab("error"),
+        onSuccess: (data, variables) => {
+            setActiveTab("execute");
+            onSaveSnippetSnapshot(variables.sql, { execute: data });
+        },
+        onError: (error, variables) => {
+            setActiveTab("error");
+            onSaveSnippetSnapshot(variables.sql, { error: extractErrorPayload(error) });
+        },
     });
 
     const latestError =
@@ -113,6 +136,11 @@ export function QueryWorkbench({
         planMutation.data,
         validateMutation.data,
     ]);
+
+    const selectedSnippet = useMemo(
+        () => snippets.find((item) => item.id === selectedSnippetId) ?? null,
+        [selectedSnippetId, snippets],
+    );
 
     function handleRun(source: QueryHistorySource, runner: () => void) {
         onSaveHistory(sql, source);
@@ -197,11 +225,15 @@ export function QueryWorkbench({
             <div className="space-y-6">
                 <SavedSnippets
                     items={snippets}
+                    selectedId={selectedSnippetId}
                     onSelect={onSqlChange}
+                    onSelectSnippet={setSelectedSnippetId}
                     onRename={onRenameSnippet}
                     onToggleFavorite={onToggleSnippetFavorite}
                     onDelete={onDeleteSnippet}
                 />
+
+                <SnippetComparePanel snippet={selectedSnippet} />
 
                 <QueryHistory
                     items={history}

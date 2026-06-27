@@ -2,7 +2,9 @@ import type { SavedSnippet } from "../../../types/history";
 
 type SavedSnippetsProps = {
     items: SavedSnippet[];
+    selectedId: string | null;
     onSelect: (sql: string) => void;
+    onSelectSnippet: (id: string) => void;
     onRename: (id: string, name: string) => void;
     onToggleFavorite: (id: string) => void;
     onDelete: (id: string) => void;
@@ -36,13 +38,17 @@ function EmptySnippetState({
 
 function SnippetCard({
     item,
+    selectedId,
     onSelect,
+    onSelectSnippet,
     onRename,
     onToggleFavorite,
     onDelete,
 }: {
     item: SavedSnippet;
+    selectedId: string | null;
     onSelect: (sql: string) => void;
+    onSelectSnippet: (id: string) => void;
     onRename: (id: string, name: string) => void;
     onToggleFavorite: (id: string) => void;
     onDelete: (id: string) => void;
@@ -62,8 +68,15 @@ function SnippetCard({
         onRename(item.id, trimmed);
     }
 
+    const isSelected = selectedId === item.id;
+
     return (
-        <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+        <div
+            className={`rounded-lg border p-4 ${isSelected
+                    ? "border-cyan-700 bg-slate-950"
+                    : "border-slate-800 bg-slate-950"
+                }`}
+        >
             <div className="mb-3 flex flex-wrap items-center gap-2">
                 <span className="rounded-md border border-cyan-900 bg-cyan-950/30 px-2 py-1 text-[11px] text-cyan-300">
                     Snippet
@@ -75,6 +88,11 @@ function SnippetCard({
                 {item.favorite ? (
                     <span className="rounded-md border border-amber-800 bg-amber-950/40 px-2 py-1 text-[11px] text-amber-200">
                         Pinned
+                    </span>
+                ) : null}
+                {item.snapshot?.lastRunAt ? (
+                    <span className="rounded-md border border-emerald-800 bg-emerald-950/30 px-2 py-1 text-[11px] text-emerald-300">
+                        Snapshot
                     </span>
                 ) : null}
             </div>
@@ -90,6 +108,17 @@ function SnippetCard({
                     className="rounded-md bg-cyan-500 px-3 py-2 text-xs font-medium text-slate-950 transition hover:bg-cyan-400"
                 >
                     Load into editor
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => onSelectSnippet(item.id)}
+                    className={`rounded-md px-3 py-2 text-xs transition ${isSelected
+                            ? "border border-cyan-700 bg-cyan-950/30 text-cyan-200"
+                            : "border border-slate-700 bg-slate-900 text-slate-200 hover:border-cyan-700 hover:text-cyan-200"
+                        }`}
+                >
+                    {isSelected ? "Comparing" : "Compare"}
                 </button>
 
                 <button
@@ -125,7 +154,9 @@ function SnippetCard({
 
 export function SavedSnippets({
     items,
+    selectedId,
     onSelect,
+    onSelectSnippet,
     onRename,
     onToggleFavorite,
     onDelete,
@@ -165,7 +196,9 @@ export function SavedSnippets({
                                     <SnippetCard
                                         key={item.id}
                                         item={item}
+                                        selectedId={selectedId}
                                         onSelect={onSelect}
+                                        onSelectSnippet={onSelectSnippet}
                                         onRename={onRename}
                                         onToggleFavorite={onToggleFavorite}
                                         onDelete={onDelete}
@@ -191,7 +224,9 @@ export function SavedSnippets({
                                     <SnippetCard
                                         key={item.id}
                                         item={item}
+                                        selectedId={selectedId}
                                         onSelect={onSelect}
+                                        onSelectSnippet={onSelectSnippet}
                                         onRename={onRename}
                                         onToggleFavorite={onToggleFavorite}
                                         onDelete={onDelete}
