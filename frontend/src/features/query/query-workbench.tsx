@@ -1,7 +1,11 @@
 import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ApiError } from "../../lib/api/client";
-import type { QueryHistoryEntry, QueryHistorySource } from "../../types/history";
+import type {
+    QueryHistoryEntry,
+    QueryHistorySource,
+    SavedSnippet,
+} from "../../types/history";
 import type {
     ErrorResponse,
     ExecuteResponse,
@@ -14,6 +18,7 @@ import { QueryHistory } from "./components/query-history";
 import { ResponsePanel } from "./components/response-panel";
 import { ResultChart } from "./components/result-chart";
 import { ResultTable } from "./components/result-table";
+import { SavedSnippets } from "./components/saved-snippets";
 import { SqlEditor } from "./components/sql-editor";
 
 type ActiveTab = "validate" | "plan" | "execute" | "error";
@@ -22,7 +27,12 @@ type QueryWorkbenchProps = {
     sql: string;
     onSqlChange: (value: string) => void;
     history: QueryHistoryEntry[];
+    snippets: SavedSnippet[];
     onSaveHistory: (sql: string, source: QueryHistorySource) => void;
+    onSaveSnippet: (sql: string) => void;
+    onRenameSnippet: (id: string, name: string) => void;
+    onToggleSnippetFavorite: (id: string) => void;
+    onDeleteSnippet: (id: string) => void;
     onToggleFavorite: (id: string) => void;
     onDeleteHistory: (id: string) => void;
     onClearHistory: () => void;
@@ -50,7 +60,12 @@ export function QueryWorkbench({
     sql,
     onSqlChange,
     history,
+    snippets,
     onSaveHistory,
+    onSaveSnippet,
+    onRenameSnippet,
+    onToggleSnippetFavorite,
+    onDeleteSnippet,
     onToggleFavorite,
     onDeleteHistory,
     onClearHistory,
@@ -105,7 +120,7 @@ export function QueryWorkbench({
     }
 
     function handleSaveCurrent() {
-        onSaveHistory(sql, "copilot");
+        onSaveSnippet(sql);
     }
 
     return (
@@ -126,8 +141,8 @@ export function QueryWorkbench({
                     <button
                         onClick={() => setActiveTab("validate")}
                         className={`rounded-md px-3 py-2 text-sm ${activeTab === "validate"
-                                ? "bg-cyan-500 text-slate-950"
-                                : "border border-slate-800 bg-slate-950 text-slate-300"
+                            ? "bg-cyan-500 text-slate-950"
+                            : "border border-slate-800 bg-slate-950 text-slate-300"
                             }`}
                     >
                         Validate
@@ -136,8 +151,8 @@ export function QueryWorkbench({
                     <button
                         onClick={() => setActiveTab("plan")}
                         className={`rounded-md px-3 py-2 text-sm ${activeTab === "plan"
-                                ? "bg-cyan-500 text-slate-950"
-                                : "border border-slate-800 bg-slate-950 text-slate-300"
+                            ? "bg-cyan-500 text-slate-950"
+                            : "border border-slate-800 bg-slate-950 text-slate-300"
                             }`}
                     >
                         Plan
@@ -146,8 +161,8 @@ export function QueryWorkbench({
                     <button
                         onClick={() => setActiveTab("execute")}
                         className={`rounded-md px-3 py-2 text-sm ${activeTab === "execute"
-                                ? "bg-cyan-500 text-slate-950"
-                                : "border border-slate-800 bg-slate-950 text-slate-300"
+                            ? "bg-cyan-500 text-slate-950"
+                            : "border border-slate-800 bg-slate-950 text-slate-300"
                             }`}
                     >
                         Execute
@@ -156,8 +171,8 @@ export function QueryWorkbench({
                     <button
                         onClick={() => setActiveTab("error")}
                         className={`rounded-md px-3 py-2 text-sm ${activeTab === "error"
-                                ? "bg-rose-500 text-white"
-                                : "border border-slate-800 bg-slate-950 text-slate-300"
+                            ? "bg-rose-500 text-white"
+                            : "border border-slate-800 bg-slate-950 text-slate-300"
                             }`}
                     >
                         Error
@@ -168,7 +183,7 @@ export function QueryWorkbench({
                         disabled={!sql.trim()}
                         className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-300 transition hover:border-cyan-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                        Save query
+                        Save snippet
                     </button>
                 </div>
 
@@ -180,6 +195,14 @@ export function QueryWorkbench({
             </div>
 
             <div className="space-y-6">
+                <SavedSnippets
+                    items={snippets}
+                    onSelect={onSqlChange}
+                    onRename={onRenameSnippet}
+                    onToggleFavorite={onToggleSnippetFavorite}
+                    onDelete={onDeleteSnippet}
+                />
+
                 <QueryHistory
                     items={history}
                     onSelect={onSqlChange}

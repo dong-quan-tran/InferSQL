@@ -1,11 +1,11 @@
-import type { QueryHistoryEntry } from "../../../types/history";
+import type { SavedSnippet } from "../../../types/history";
 
-type QueryHistoryProps = {
-    items: QueryHistoryEntry[];
+type SavedSnippetsProps = {
+    items: SavedSnippet[];
     onSelect: (sql: string) => void;
+    onRename: (id: string, name: string) => void;
     onToggleFavorite: (id: string) => void;
     onDelete: (id: string) => void;
-    onClear: () => void;
 };
 
 function formatTimestamp(value: string) {
@@ -19,22 +19,7 @@ function formatTimestamp(value: string) {
     }).format(date);
 }
 
-function sourceBadgeClass(source: QueryHistoryEntry["source"]) {
-    switch (source) {
-        case "execute":
-            return "border-emerald-900 bg-emerald-950/30 text-emerald-300";
-        case "plan":
-            return "border-violet-900 bg-violet-950/30 text-violet-300";
-        case "validate":
-            return "border-cyan-900 bg-cyan-950/30 text-cyan-300";
-        case "copilot":
-            return "border-amber-900 bg-amber-950/30 text-amber-300";
-        default:
-            return "border-slate-800 bg-slate-950 text-slate-300";
-    }
-}
-
-function EmptyHistoryState({
+function EmptySnippetState({
     title,
     description,
 }: {
@@ -49,31 +34,47 @@ function EmptyHistoryState({
     );
 }
 
-function HistoryCard({
+function SnippetCard({
     item,
     onSelect,
+    onRename,
     onToggleFavorite,
     onDelete,
 }: {
-    item: QueryHistoryEntry;
+    item: SavedSnippet;
     onSelect: (sql: string) => void;
+    onRename: (id: string, name: string) => void;
     onToggleFavorite: (id: string) => void;
     onDelete: (id: string) => void;
 }) {
+    function handleRename() {
+        const nextName = window.prompt("Rename snippet", item.name);
+
+        if (!nextName) {
+            return;
+        }
+
+        const trimmed = nextName.trim();
+        if (!trimmed || trimmed === item.name) {
+            return;
+        }
+
+        onRename(item.id, trimmed);
+    }
+
     return (
         <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
             <div className="mb-3 flex flex-wrap items-center gap-2">
-                <span
-                    className={`rounded-md border px-2 py-1 text-[11px] ${sourceBadgeClass(
-                        item.source,
-                    )}`}
-                >
-                    {item.source}
+                <span className="rounded-md border border-cyan-900 bg-cyan-950/30 px-2 py-1 text-[11px] text-cyan-300">
+                    Snippet
                 </span>
-                <span className="text-xs text-slate-500">{formatTimestamp(item.createdAt)}</span>
+                <span className="text-sm font-medium text-slate-200">{item.name}</span>
+                <span className="text-xs text-slate-500">
+                    Updated {formatTimestamp(item.updatedAt)}
+                </span>
                 {item.favorite ? (
                     <span className="rounded-md border border-amber-800 bg-amber-950/40 px-2 py-1 text-[11px] text-amber-200">
-                        Favorite
+                        Pinned
                     </span>
                 ) : null}
             </div>
@@ -93,13 +94,21 @@ function HistoryCard({
 
                 <button
                     type="button"
+                    onClick={handleRename}
+                    className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-200 transition hover:border-cyan-700 hover:text-cyan-200"
+                >
+                    Rename
+                </button>
+
+                <button
+                    type="button"
                     onClick={() => onToggleFavorite(item.id)}
                     className={`rounded-md px-3 py-2 text-xs transition ${item.favorite
                             ? "border border-amber-800 bg-amber-950/30 text-amber-200 hover:bg-amber-950/50"
                             : "border border-slate-700 bg-slate-900 text-slate-200 hover:border-amber-800 hover:text-amber-200"
                         }`}
                 >
-                    {item.favorite ? "Unfavorite" : "Favorite"}
+                    {item.favorite ? "Unpin" : "Pin"}
                 </button>
 
                 <button
@@ -114,60 +123,50 @@ function HistoryCard({
     );
 }
 
-export function QueryHistory({
+export function SavedSnippets({
     items,
     onSelect,
+    onRename,
     onToggleFavorite,
     onDelete,
-    onClear,
-}: QueryHistoryProps) {
-    const favorites = items.filter((item) => item.favorite);
-    const recents = items.filter((item) => !item.favorite);
+}: SavedSnippetsProps) {
+    const pinned = items.filter((item) => item.favorite);
+    const unpinned = items.filter((item) => !item.favorite);
 
     return (
         <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <div>
-                    <h2 className="text-lg font-semibold text-white">Query history</h2>
-                    <p className="mt-1 text-sm text-slate-400">
-                        Session queries, favorites, and quick editor reloads.
-                    </p>
-                </div>
-
-                <button
-                    type="button"
-                    onClick={onClear}
-                    disabled={items.length === 0}
-                    className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-300 transition hover:border-rose-800 hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                    Clear all
-                </button>
+            <div className="mb-4">
+                <h2 className="text-lg font-semibold text-white">Saved snippets</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                    Durable named SQL snippets stored locally across browser reloads.
+                </p>
             </div>
 
             {items.length === 0 ? (
-                <EmptyHistoryState
-                    title="No history yet"
-                    description="Run validate, plan, or execute to start building session history."
+                <EmptySnippetState
+                    title="No snippets yet"
+                    description="Save reusable SQL from the editor to build a durable snippet library."
                 />
             ) : (
                 <div className="space-y-5">
                     <div>
                         <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-                            Favorites
+                            Pinned
                         </p>
 
-                        {favorites.length === 0 ? (
-                            <EmptyHistoryState
-                                title="No favorites yet"
-                                description="Star your most useful history entries so they stay easy to find during demos and iteration."
+                        {pinned.length === 0 ? (
+                            <EmptySnippetState
+                                title="No pinned snippets yet"
+                                description="Pin your most useful reusable SQL so it stays easy to find."
                             />
                         ) : (
                             <div className="space-y-3">
-                                {favorites.map((item) => (
-                                    <HistoryCard
+                                {pinned.map((item) => (
+                                    <SnippetCard
                                         key={item.id}
                                         item={item}
                                         onSelect={onSelect}
+                                        onRename={onRename}
                                         onToggleFavorite={onToggleFavorite}
                                         onDelete={onDelete}
                                     />
@@ -178,21 +177,22 @@ export function QueryHistory({
 
                     <div>
                         <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-                            Recent
+                            All snippets
                         </p>
 
-                        {recents.length === 0 ? (
-                            <EmptyHistoryState
-                                title="No recent queries yet"
-                                description="Recent validate, plan, execute, and copilot actions will appear here."
+                        {unpinned.length === 0 ? (
+                            <EmptySnippetState
+                                title="No additional snippets yet"
+                                description="Saved snippets that are not pinned will appear here."
                             />
                         ) : (
                             <div className="space-y-3">
-                                {recents.map((item) => (
-                                    <HistoryCard
+                                {unpinned.map((item) => (
+                                    <SnippetCard
                                         key={item.id}
                                         item={item}
                                         onSelect={onSelect}
+                                        onRename={onRename}
                                         onToggleFavorite={onToggleFavorite}
                                         onDelete={onDelete}
                                     />

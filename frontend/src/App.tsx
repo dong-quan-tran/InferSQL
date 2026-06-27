@@ -5,7 +5,11 @@ import { CatalogExplorer } from "./features/catalog/catalog-explorer";
 import { CopilotPanel } from "./features/copilot/copilot-panel";
 import { QueryWorkbench } from "./features/query/query-workbench";
 import { apiGet, API_BASE_URL, ApiError } from "./lib/api/client";
-import type { QueryHistoryEntry, QueryHistorySource } from "./types/history";
+import type {
+  QueryHistoryEntry,
+  QueryHistorySource,
+  SavedSnippet,
+} from "./types/history";
 
 type CatalogDataset = {
   name: string;
@@ -26,6 +30,7 @@ ORDER BY close DESC
 LIMIT 10`;
 
 const HISTORY_STORAGE_KEY = "infersql.query-history.v1";
+const SNIPPETS_STORAGE_KEY = "infersql.saved-snippets.v1";
 
 type SidebarProps = {
   activeView: ActiveView;
@@ -122,13 +127,49 @@ function Header({ activeView }: { activeView: ActiveView }) {
   );
 }
 
-function readInitialHistory(): QueryHistoryEntry[] {
-  if (typeof window === "undefined") {
-    return [];
-  }
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
 
+function isQueryHistorySource(value: unknown): value is QueryHistorySource {
+  return (
+    value === "validate" ||
+    value === "plan" ||
+    value === "execute" ||
+    value === "copilot"
+  );
+}
+
+function isQueryHistoryEntry(value: unknown): value is QueryHistoryEntry {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.sql === "string" &&
+    isQueryHistorySource(value.source) &&
+    typeof value.createdAt === "string" &&
+    typeof value.favorite === "boolean"
+  );
+}
+
+function isSavedSnippet(value: unknown): value is SavedSnippet {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.sql === "string" &&
+    typeof value.createdAt === "string" &&
+    typeof value.updatedAt === "string" &&
+    typeof value.favorite === "boolean"
+  );
+}
+
+function readStorageArray<T>(
+  storage: Storage,
+  key: string,
+  isItem: (value: unknown) => value is T,
+): T[] {
   try {
-    const raw = window.sessionStorage.getItem(HISTORY_STORAGE_KEY);
+    const raw = storage.getItem(key);
     if (!raw) {
       return [];
     }
@@ -138,28 +179,63 @@ function readInitialHistory(): QueryHistoryEntry[] {
       return [];
     }
 
-    return parsed.filter(
-      (item): item is QueryHistoryEntry =>
-        typeof item?.id === "string" &&
-        typeof item?.sql === "string" &&
-        typeof item?.source === "string" &&
-        typeof item?.createdAt === "string" &&
-        typeof item?.favorite === "boolean",
-    );
+    return parsed.filter(isItem);
   } catch {
     return [];
   }
+}
+
+function readInitialHistory(): QueryHistoryEntry[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  return readStorageArray(
+    window.sessionStorage,
+    HISTORY_STORAGE_KEY,
+    isQueryHistoryEntry,
+  );
+}
+
+function readInitialSnippets(): SavedSnippet[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  return readStorageArray(
+    window.localStorage,
+    SNIPPETS_STORAGE_KEY,
+    isSavedSnippet,
+  );
+}
+
+function buildSnippetName(sql: string, count: number) {
+  const firstLine = sql
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean);
+
+  if (firstLine) {
+    return firstLine.slice(0, 48);
+  }
+
+  return `Snippet ${count + 1}`;
 }
 
 export default function App() {
   const [activeView, setActiveView] = useState<ActiveView>("query");
   const [sql, setSql] = useState(STARTER_SQL);
   const [history, setHistory] = useState<QueryHistoryEntry[]>(readInitialHistory);
+  const [snippets, setSnippets] = useState<SavedSnippet[]>(readInitialSnippets);
   const gotoPrefixRef = useRef(false);
 
   useEffect(() => {
     window.sessionStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
   }, [history]);
+
+  useEffect(() => {
+    window.localStorage.setItem(SNIPPETS_STORAGE_KEY, JSON.stringify(snippets));
+  }, [snippets]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -251,6 +327,70 @@ export default function App() {
     setHistory([]);
   }
 
+  function saveSnippet(nextSql: string) {
+    const trimmed = nextSql.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    setSnippets((current) => {
+      const now = new Date().toISOString();
+      const existing = current.find((item) => item.sql === trimmed);
+
+      if (existing) {
+        return current.map((item) =>
+          item.id === existing.id
+            ? { ...item, updatedAt: now }
+            : item,
+        );
+      }
+
+      const nextSnippet: SavedSnippet = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: buildSnippetName(trimmed, current.length),
+        sql: trimmed,
+        createdAt: now,
+        updatedAt: now,
+        favorite: false,
+      };
+
+      return [nextSnippet, ...current];
+    });
+  }
+
+  function renameSnippet(id: string, name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    setSnippets((current) =>
+      current.map((item) =>
+        item.id === id
+          ? { ...item, name: trimmed, updatedAt: new Date().toISOString() }
+          : item,
+      ),
+    );
+  }
+
+  function toggleSnippetFavorite(id: string) {
+    setSnippets((current) =>
+      current.map((item) =>
+        item.id === id
+          ? {
+            ...item,
+            favorite: !item.favorite,
+            updatedAt: new Date().toISOString(),
+          }
+          : item,
+      ),
+    );
+  }
+
+  function deleteSnippet(id: string) {
+    setSnippets((current) => current.filter((item) => item.id !== id));
+  }
+
   function handleInsertSql(nextSql: string) {
     setSql(nextSql);
     setActiveView("query");
@@ -273,7 +413,12 @@ export default function App() {
           sql={sql}
           onSqlChange={setSql}
           history={history}
+          snippets={snippets}
           onSaveHistory={saveHistory}
+          onSaveSnippet={saveSnippet}
+          onRenameSnippet={renameSnippet}
+          onToggleSnippetFavorite={toggleSnippetFavorite}
+          onDeleteSnippet={deleteSnippet}
           onToggleFavorite={toggleFavorite}
           onDeleteHistory={deleteHistory}
           onClearHistory={clearHistory}
