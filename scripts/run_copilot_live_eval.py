@@ -77,7 +77,9 @@ class LiveEvalQueryService:
     def __init__(self) -> None:
         self.executed_sql: list[str] = []
 
-    def validate(self, sql: str, request_id: str | None = None, debug: bool = False) -> dict:
+    def validate(
+        self, sql: str, request_id: str | None = None, debug: bool = False
+    ) -> dict:
         normalized_sql = " ".join(sql.strip().split())
         upper_sql = normalized_sql.upper()
 
@@ -108,7 +110,11 @@ class LiveEvalQueryService:
                 columns=["ticker", "close"],
             )
 
-        if "SELECT PRICE " in upper_sql or "SELECT PRICE," in upper_sql or " PRICE FROM " in upper_sql:
+        if (
+            "SELECT PRICE " in upper_sql
+            or "SELECT PRICE," in upper_sql
+            or " PRICE FROM " in upper_sql
+        ):
             return self._invalid(
                 sql=sql,
                 normalized_sql=normalized_sql,
@@ -178,11 +184,22 @@ class LiveEvalQueryService:
             return ["count"]
         if "AVG(" in upper_sql and "GROUP BY" in upper_sql:
             return ["symbol", "avg_close"]
-        if "SELECT SYMBOL, CLOSE " in upper_sql or "SELECT SYMBOL, CLOSE FROM " in upper_sql:
+        if (
+            "SELECT SYMBOL, CLOSE " in upper_sql
+            or "SELECT SYMBOL, CLOSE FROM " in upper_sql
+        ):
             return ["symbol", "close"]
-        if "SELECT CLOSE " in upper_sql or "SELECT CLOSE FROM " in upper_sql or "SELECT CLOSE," in upper_sql:
+        if (
+            "SELECT CLOSE " in upper_sql
+            or "SELECT CLOSE FROM " in upper_sql
+            or "SELECT CLOSE," in upper_sql
+        ):
             return ["close"]
-        if "SELECT SYMBOL " in upper_sql or "SELECT SYMBOL FROM " in upper_sql or "SELECT SYMBOL," in upper_sql:
+        if (
+            "SELECT SYMBOL " in upper_sql
+            or "SELECT SYMBOL FROM " in upper_sql
+            or "SELECT SYMBOL," in upper_sql
+        ):
             return ["symbol"]
         return ["close"]
 
@@ -209,7 +226,9 @@ class LiveEvalQueryService:
             "has_limit": "LIMIT" in upper_sql,
         }
 
-    def execute(self, sql: str, request_id: str | None = None, debug: bool = False) -> dict:
+    def execute(
+        self, sql: str, request_id: str | None = None, debug: bool = False
+    ) -> dict:
         normalized_sql = " ".join(sql.strip().split())
         self.executed_sql.append(normalized_sql)
 
@@ -227,13 +246,19 @@ class LiveEvalQueryService:
                 {"symbol": "MSFT", "close": 425.27},
             ]
             columns = ["symbol", "close"]
-        elif "SELECT SYMBOL, CLOSE " in upper_sql and "WHERE SYMBOL = 'MSFT'" in upper_sql:
+        elif (
+            "SELECT SYMBOL, CLOSE " in upper_sql
+            and "WHERE SYMBOL = 'MSFT'" in upper_sql
+        ):
             rows = [{"symbol": "MSFT", "close": 425.27}]
             columns = ["symbol", "close"]
         elif "SELECT CLOSE " in upper_sql and "WHERE SYMBOL = 'AAPL'" in upper_sql:
             rows = [{"close": 189.12}]
             columns = ["close"]
-        elif "SELECT SYMBOL, CLOSE " in upper_sql and "WHERE SYMBOL = 'AAPL'" in upper_sql:
+        elif (
+            "SELECT SYMBOL, CLOSE " in upper_sql
+            and "WHERE SYMBOL = 'AAPL'" in upper_sql
+        ):
             rows = [{"symbol": "AAPL", "close": 189.12}]
             columns = ["symbol", "close"]
         elif "WHERE CLOSE > 200" in upper_sql:
@@ -251,7 +276,9 @@ class LiveEvalQueryService:
                 {"symbol": "MSFT", "avg_close": 425.27},
             ]
             columns = ["symbol", "avg_close"]
-        elif "SYMBOL, CLOSE" in upper_sql or ("SYMBOL" in upper_sql and "CLOSE" in upper_sql):
+        elif "SYMBOL, CLOSE" in upper_sql or (
+            "SYMBOL" in upper_sql and "CLOSE" in upper_sql
+        ):
             rows = [
                 {"symbol": "AAPL", "close": 189.12},
                 {"symbol": "MSFT", "close": 425.27},
@@ -321,6 +348,7 @@ def main() -> None:
         ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
         ollama_model=os.getenv("OLLAMA_MODEL", "llama3.1"),
         ollama_temperature=float(os.getenv("OLLAMA_TEMPERATURE", "0.0")),
+        ollama_timeout_seconds=float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "180")),
         gemini_api_key=os.getenv("GEMINI_API_KEY"),
         gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
         openai_api_key=os.getenv("OPENAI_API_KEY"),

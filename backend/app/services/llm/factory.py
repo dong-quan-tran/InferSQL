@@ -11,6 +11,7 @@ def build_llm_provider(
     ollama_base_url: str,
     ollama_model: str,
     ollama_temperature: float = 0.0,
+    ollama_timeout_seconds: float = 180.0,
     gemini_api_key: str | None = None,
     gemini_model: str = "gemini-2.5-flash",
     openai_api_key: str | None = None,
@@ -20,6 +21,7 @@ def build_llm_provider(
         base_url=ollama_base_url,
         model=ollama_model,
         temperature=ollama_temperature,
+        timeout_seconds=ollama_timeout_seconds,
     )
 
     normalized = provider.lower()
