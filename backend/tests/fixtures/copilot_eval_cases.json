@@ -48,7 +48,6 @@
             "MSFT"
         ],
         "expected_columns": [
-            "symbol",
             "close"
         ],
         "expected_row_count": 1,
@@ -91,7 +90,7 @@
             "close"
         ],
         "expected_assumptions_contains": [
-            "Mapped ticker to symbol"
+            "Mapped 'ticker' to 'symbol'"
         ],
         "max_attempts": 3
     },
@@ -114,7 +113,7 @@
         ],
         "expected_row_count": 1,
         "expected_assumptions_contains": [
-            "Mapped stock price to close"
+            "Mapped 'stock price' to 'close'"
         ],
         "max_attempts": 3
     },

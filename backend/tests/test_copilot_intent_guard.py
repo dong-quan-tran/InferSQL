@@ -123,3 +123,25 @@ def test_requests_clarification_for_underspecified_join() -> None:
     assert decision.ambiguous_terms == ["join"]
     assert decision.clarification_question is not None
     assert "which columns" in decision.clarification_question.lower()
+
+def test_blocks_write_intent_requests() -> None:
+    guard = CopilotIntentGuard(build_registry())
+
+    requests = {
+        "Delete all rows from prices": "delete",
+        "Remove MSFT from prices": "remove",
+        "Update the closing price for AAPL": "update",
+        "Insert a new stock into prices": "insert",
+        "Drop the fundamentals table": "drop",
+        "Create a new prices table": "create",
+        "Truncate prices": "truncate",
+    }
+
+    for question, expected_intent in requests.items():
+        decision = guard.evaluate(question)
+
+        assert decision.allowed is False, question
+        assert decision.clarification_question is None, question
+        assert expected_intent in decision.unsupported_terms, question
+        assert "read-only analytical queries" in decision.errors[0], question
+

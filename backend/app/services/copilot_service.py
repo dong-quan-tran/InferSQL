@@ -137,6 +137,11 @@ class CopilotService:
 
         if clarification_question:
             assumptions.append("Generation was skipped pending clarification.")
+        elif any("read-only analytical queries" in error.lower() for error in errors):
+            assumptions.append(
+                "Generation was skipped because InferSQL only supports read-only "
+                "analytical queries."
+            )
         else:
             assumptions.append(
                 "Generation was skipped because the requested concept is not supported "

@@ -1,0 +1,1558 @@
+{
+  "metadata": {
+    "timestamp_utc": "2026-09-03T19:32:24Z",
+    "provider": "ollama",
+    "model": "llama3.1:8b",
+    "evaluation_type": "production_query_service_execution_equivalence",
+    "query_engine": "DataFusion",
+    "sql_parser": "SQLGlot",
+    "max_retries": 2
+  },
+  "summary": {
+    "total_cases": 33,
+    "passed_cases": 33,
+    "failed_cases": 0,
+    "execution_accuracy": 1.0,
+    "valid_case_accuracy": 1.0,
+    "invalid_request_rejection_accuracy": 1.0,
+    "first_pass_valid_case_accuracy": 1.0,
+    "repair_success_rate": null,
+    "mean_attempts": 0.848,
+    "latency_ms": {
+      "median": 39775.474,
+      "p95": 47689.57,
+      "max": 87581.215
+    },
+    "by_category": {
+      "simple_select": {
+        "total": 6,
+        "passed": 6,
+        "failed": 0,
+        "pass_rate": 1.0
+      },
+      "synonym": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "pass_rate": 1.0
+      },
+      "aggregate": {
+        "total": 6,
+        "passed": 6,
+        "failed": 0,
+        "pass_rate": 1.0
+      },
+      "ordering": {
+        "total": 3,
+        "passed": 3,
+        "failed": 0,
+        "pass_rate": 1.0
+      },
+      "join": {
+        "total": 3,
+        "passed": 3,
+        "failed": 0,
+        "pass_rate": 1.0
+      },
+      "subquery": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "pass_rate": 1.0
+      },
+      "set_operation": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "pass_rate": 1.0
+      },
+      "hallucination": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "pass_rate": 1.0
+      },
+      "ambiguous": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "pass_rate": 1.0
+      },
+      "safety": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "pass_rate": 1.0
+      }
+    }
+  },
+  "results": [
+    {
+      "id": "select_symbol_limit",
+      "category": "simple_select",
+      "question": "Show one stock symbol",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT symbol FROM prices LIMIT 1",
+      "normalized_sql": "SELECT symbol FROM prices LIMIT 1",
+      "assumptions": [],
+      "validation_errors": [],
+      "elapsed_ms": 35543.307,
+      "reference_sql": "SELECT symbol FROM prices LIMIT 1",
+      "expected_columns": [
+        "symbol"
+      ],
+      "actual_columns": [
+        "symbol"
+      ],
+      "expected_rows": [
+        {
+          "symbol": "AAPL"
+        }
+      ],
+      "actual_rows": [
+        {
+          "symbol": "AAPL"
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "select_symbol_and_close",
+      "category": "simple_select",
+      "question": "Show stock symbols and closing prices",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT symbol, close FROM prices",
+      "normalized_sql": "SELECT symbol, close FROM prices",
+      "assumptions": [
+        "Mapped 'stock symbol' to 'symbol' based on schema context.",
+        "Mapped 'closing price' to 'close' based on approved aliases."
+      ],
+      "validation_errors": [],
+      "elapsed_ms": 41632.116,
+      "reference_sql": "SELECT symbol, close FROM prices",
+      "expected_columns": [
+        "symbol",
+        "close"
+      ],
+      "actual_columns": [
+        "symbol",
+        "close"
+      ],
+      "expected_rows": [
+        {
+          "symbol": "NVDA",
+          "close": 1210.54
+        },
+        {
+          "symbol": "GOOGL",
+          "close": 176.33
+        },
+        {
+          "symbol": "AMZN",
+          "close": 182.41
+        },
+        {
+          "symbol": "AAPL",
+          "close": 189.12
+        },
+        {
+          "symbol": "MSFT",
+          "close": 425.27
+        }
+      ],
+      "actual_rows": [
+        {
+          "symbol": "NVDA",
+          "close": 1210.54
+        },
+        {
+          "symbol": "GOOGL",
+          "close": 176.33
+        },
+        {
+          "symbol": "AMZN",
+          "close": 182.41
+        },
+        {
+          "symbol": "AAPL",
+          "close": 189.12
+        },
+        {
+          "symbol": "MSFT",
+          "close": 425.27
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "filter_by_symbol",
+      "category": "simple_select",
+      "question": "Show the closing price for MSFT",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT close FROM prices WHERE symbol = 'MSFT'",
+      "normalized_sql": "SELECT close FROM prices WHERE symbol = 'MSFT'",
+      "assumptions": [
+        "Mapped 'closing price' to 'close' based on approved aliases."
+      ],
+      "validation_errors": [],
+      "elapsed_ms": 39214.862,
+      "reference_sql": "SELECT close FROM prices WHERE symbol = 'MSFT'",
+      "expected_columns": [
+        "close"
+      ],
+      "actual_columns": [
+        "close"
+      ],
+      "expected_rows": [
+        {
+          "close": 425.27
+        }
+      ],
+      "actual_rows": [
+        {
+          "close": 425.27
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "filter_by_close_threshold",
+      "category": "simple_select",
+      "question": "Show stocks with close greater than 200",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT symbol, close FROM prices WHERE close > 200",
+      "normalized_sql": "SELECT symbol, close FROM prices WHERE close > 200",
+      "assumptions": [],
+      "validation_errors": [],
+      "elapsed_ms": 35993.024,
+      "reference_sql": "SELECT symbol, close FROM prices WHERE close > 200",
+      "expected_columns": [
+        "symbol",
+        "close"
+      ],
+      "actual_columns": [
+        "symbol",
+        "close"
+      ],
+      "expected_rows": [
+        {
+          "symbol": "NVDA",
+          "close": 1210.54
+        },
+        {
+          "symbol": "MSFT",
+          "close": 425.27
+        }
+      ],
+      "actual_rows": [
+        {
+          "symbol": "NVDA",
+          "close": 1210.54
+        },
+        {
+          "symbol": "MSFT",
+          "close": 425.27
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "filter_by_lower_price",
+      "category": "simple_select",
+      "question": "Show symbols with closing prices below 190",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT symbol FROM prices WHERE close < 190",
+      "normalized_sql": "SELECT symbol FROM prices WHERE close < 190",
+      "assumptions": [],
+      "validation_errors": [],
+      "elapsed_ms": 36349.999,
+      "reference_sql": "SELECT symbol FROM prices WHERE close < 190",
+      "expected_columns": [
+        "symbol"
+      ],
+      "actual_columns": [
+        "symbol"
+      ],
+      "expected_rows": [
+        {
+          "symbol": "AAPL"
+        },
+        {
+          "symbol": "AMZN"
+        },
+        {
+          "symbol": "GOOGL"
+        }
+      ],
+      "actual_rows": [
+        {
+          "symbol": "AAPL"
+        },
+        {
+          "symbol": "AMZN"
+        },
+        {
+          "symbol": "GOOGL"
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "explicit_limit",
+      "category": "simple_select",
+      "question": "Show two stocks and their closing prices",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT symbol, close FROM prices LIMIT 2",
+      "normalized_sql": "SELECT symbol, close FROM prices LIMIT 2",
+      "assumptions": [
+        "Mapped 'closing price' to 'close' based on approved aliases."
+      ],
+      "validation_errors": [],
+      "elapsed_ms": 39775.474,
+      "reference_sql": "SELECT symbol, close FROM prices LIMIT 2",
+      "expected_columns": [
+        "symbol",
+        "close"
+      ],
+      "actual_columns": [
+        "symbol",
+        "close"
+      ],
+      "expected_rows": [
+        {
+          "symbol": "AAPL",
+          "close": 189.12
+        },
+        {
+          "symbol": "MSFT",
+          "close": 425.27
+        }
+      ],
+      "actual_rows": [
+        {
+          "symbol": "AAPL",
+          "close": 189.12
+        },
+        {
+          "symbol": "MSFT",
+          "close": 425.27
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "ticker_alias",
+      "category": "synonym",
+      "question": "Show ticker and close",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT symbol, close FROM prices",
+      "normalized_sql": "SELECT symbol, close FROM prices",
+      "assumptions": [
+        "Mapped 'ticker' to 'symbol' based on schema context."
+      ],
+      "validation_errors": [],
+      "elapsed_ms": 39568.694,
+      "reference_sql": "SELECT symbol, close FROM prices",
+      "expected_columns": [
+        "symbol",
+        "close"
+      ],
+      "actual_columns": [
+        "symbol",
+        "close"
+      ],
+      "expected_rows": [
+        {
+          "symbol": "NVDA",
+          "close": 1210.54
+        },
+        {
+          "symbol": "GOOGL",
+          "close": 176.33
+        },
+        {
+          "symbol": "AMZN",
+          "close": 182.41
+        },
+        {
+          "symbol": "AAPL",
+          "close": 189.12
+        },
+        {
+          "symbol": "MSFT",
+          "close": 425.27
+        }
+      ],
+      "actual_rows": [
+        {
+          "symbol": "NVDA",
+          "close": 1210.54
+        },
+        {
+          "symbol": "GOOGL",
+          "close": 176.33
+        },
+        {
+          "symbol": "AMZN",
+          "close": 182.41
+        },
+        {
+          "symbol": "AAPL",
+          "close": 189.12
+        },
+        {
+          "symbol": "MSFT",
+          "close": 425.27
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "stock_price_alias",
+      "category": "synonym",
+      "question": "Show stock price for AAPL",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT close FROM prices WHERE symbol = 'AAPL'",
+      "normalized_sql": "SELECT close FROM prices WHERE symbol = 'AAPL'",
+      "assumptions": [
+        "Mapped 'stock price' to 'close' based on schema context."
+      ],
+      "validation_errors": [],
+      "elapsed_ms": 41101.065,
+      "reference_sql": "SELECT close FROM prices WHERE symbol = 'AAPL'",
+      "expected_columns": [
+        "close"
+      ],
+      "actual_columns": [
+        "close"
+      ],
+      "expected_rows": [
+        {
+          "close": 189.12
+        }
+      ],
+      "actual_rows": [
+        {
+          "close": 189.12
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "share_price_alias",
+      "category": "synonym",
+      "question": "Show the share price for NVDA",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT close FROM prices WHERE symbol = 'NVDA'",
+      "normalized_sql": "SELECT close FROM prices WHERE symbol = 'NVDA'",
+      "assumptions": [
+        "Mapped 'share price' to 'close' based on schema context."
+      ],
+      "validation_errors": [],
+      "elapsed_ms": 40849.637,
+      "reference_sql": "SELECT close FROM prices WHERE symbol = 'NVDA'",
+      "expected_columns": [
+        "close"
+      ],
+      "actual_columns": [
+        "close"
+      ],
+      "expected_rows": [
+        {
+          "close": 1210.54
+        }
+      ],
+      "actual_rows": [
+        {
+          "close": 1210.54
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "company_value_alias",
+      "category": "synonym",
+      "question": "Show company value for MSFT",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT market_cap FROM fundamentals WHERE symbol = 'MSFT'",
+      "normalized_sql": "SELECT market_cap FROM fundamentals WHERE symbol = 'MSFT'",
+      "assumptions": [
+        "Mapped company value to market_cap based on schema context."
+      ],
+      "validation_errors": [],
+      "elapsed_ms": 39778.313,
+      "reference_sql": "SELECT market_cap FROM fundamentals WHERE symbol = 'MSFT'",
+      "expected_columns": [
+        "market_cap"
+      ],
+      "actual_columns": [
+        "market_cap"
+      ],
+      "expected_rows": [
+        {
+          "market_cap": 3200000000000
+        }
+      ],
+      "actual_rows": [
+        {
+          "market_cap": 3200000000000
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "count_rows",
+      "category": "aggregate",
+      "question": "Count how many rows are in prices",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT COUNT(*) FROM prices",
+      "normalized_sql": "SELECT COUNT(*) FROM prices",
+      "assumptions": [],
+      "validation_errors": [],
+      "elapsed_ms": 37485.392,
+      "reference_sql": "SELECT COUNT(*) AS count FROM prices",
+      "expected_columns": [
+        "count"
+      ],
+      "actual_columns": [
+        "count(*)"
+      ],
+      "expected_rows": [
+        [
+          5
+        ]
+      ],
+      "actual_rows": [
+        [
+          5
+        ]
+      ],
+      "compared_column_names": false
+    },
+    {
+      "id": "average_close",
+      "category": "aggregate",
+      "question": "What is the average closing price?",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT AVG(close) AS avg_close FROM prices",
+      "normalized_sql": "SELECT AVG(close) AS avg_close FROM prices",
+      "assumptions": [
+        "Mapped 'closing price' to 'close' based on schema context."
+      ],
+      "validation_errors": [],
+      "elapsed_ms": 39101.022,
+      "reference_sql": "SELECT AVG(close) AS avg_close FROM prices",
+      "expected_columns": [
+        "avg_close"
+      ],
+      "actual_columns": [
+        "avg_close"
+      ],
+      "expected_rows": [
+        [
+          436.734
+        ]
+      ],
+      "actual_rows": [
+        [
+          436.734
+        ]
+      ],
+      "compared_column_names": false
+    },
+    {
+      "id": "highest_close",
+      "category": "aggregate",
+      "question": "What is the highest closing price?",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT MAX(close) FROM prices",
+      "normalized_sql": "SELECT MAX(close) FROM prices",
+      "assumptions": [],
+      "validation_errors": [],
+      "elapsed_ms": 36383.851,
+      "reference_sql": "SELECT MAX(close) AS max_close FROM prices",
+      "expected_columns": [
+        "max_close"
+      ],
+      "actual_columns": [
+        "max(prices.close)"
+      ],
+      "expected_rows": [
+        [
+          1210.54
+        ]
+      ],
+      "actual_rows": [
+        [
+          1210.54
+        ]
+      ],
+      "compared_column_names": false
+    },
+    {
+      "id": "lowest_close",
+      "category": "aggregate",
+      "question": "What is the lowest closing price?",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT MIN(close) FROM prices",
+      "normalized_sql": "SELECT MIN(close) FROM prices",
+      "assumptions": [],
+      "validation_errors": [],
+      "elapsed_ms": 36878.338,
+      "reference_sql": "SELECT MIN(close) AS min_close FROM prices",
+      "expected_columns": [
+        "min_close"
+      ],
+      "actual_columns": [
+        "min(prices.close)"
+      ],
+      "expected_rows": [
+        [
+          176.33
+        ]
+      ],
+      "actual_rows": [
+        [
+          176.33
+        ]
+      ],
+      "compared_column_names": false
+    },
+    {
+      "id": "group_by_symbol",
+      "category": "aggregate",
+      "question": "Show each symbol and its average closing price",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT symbol, AVG(close) AS avg_close FROM prices GROUP BY symbol",
+      "normalized_sql": "SELECT symbol, AVG(close) AS avg_close FROM prices GROUP BY symbol",
+      "assumptions": [],
+      "validation_errors": [],
+      "elapsed_ms": 38471.806,
+      "reference_sql": "SELECT symbol, AVG(close) AS avg_close FROM prices GROUP BY symbol",
+      "expected_columns": [
+        "symbol",
+        "avg_close"
+      ],
+      "actual_columns": [
+        "symbol",
+        "avg_close"
+      ],
+      "expected_rows": [
+        {
+          "symbol": "NVDA",
+          "avg_close": 1210.54
+        },
+        {
+          "symbol": "GOOGL",
+          "avg_close": 176.33
+        },
+        {
+          "symbol": "AMZN",
+          "avg_close": 182.41
+        },
+        {
+          "symbol": "AAPL",
+          "avg_close": 189.12
+        },
+        {
+          "symbol": "MSFT",
+          "avg_close": 425.27
+        }
+      ],
+      "actual_rows": [
+        {
+          "symbol": "NVDA",
+          "avg_close": 1210.54
+        },
+        {
+          "symbol": "GOOGL",
+          "avg_close": 176.33
+        },
+        {
+          "symbol": "AMZN",
+          "avg_close": 182.41
+        },
+        {
+          "symbol": "AAPL",
+          "avg_close": 189.12
+        },
+        {
+          "symbol": "MSFT",
+          "avg_close": 425.27
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "having_average_close",
+      "category": "aggregate",
+      "question": "Show symbols with an average closing price above 200",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT symbol, AVG(close) AS avg_close FROM prices WHERE close > 200 GROUP BY symbol HAVING AVG(close) > 200",
+      "normalized_sql": "SELECT symbol, AVG(close) AS avg_close FROM prices WHERE close > 200 GROUP BY symbol HAVING AVG(close) > 200",
+      "assumptions": [
+        "Mapped 'closing price' to 'close' based on approved aliases."
+      ],
+      "validation_errors": [],
+      "elapsed_ms": 44234.985,
+      "reference_sql": "SELECT symbol, AVG(close) AS avg_close FROM prices GROUP BY symbol HAVING AVG(close) > 200",
+      "expected_columns": [
+        "symbol",
+        "avg_close"
+      ],
+      "actual_columns": [
+        "symbol",
+        "avg_close"
+      ],
+      "expected_rows": [
+        {
+          "symbol": "NVDA",
+          "avg_close": 1210.54
+        },
+        {
+          "symbol": "MSFT",
+          "avg_close": 425.27
+        }
+      ],
+      "actual_rows": [
+        {
+          "symbol": "NVDA",
+          "avg_close": 1210.54
+        },
+        {
+          "symbol": "MSFT",
+          "avg_close": 425.27
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "top_two_by_close",
+      "category": "ordering",
+      "question": "Show the two stocks with the highest closing prices",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT symbol, close FROM prices ORDER BY close DESC LIMIT 2",
+      "normalized_sql": "SELECT symbol, close FROM prices ORDER BY close DESC LIMIT 2",
+      "assumptions": [
+        "Mapped 'closing price' to 'close' based on approved aliases."
+      ],
+      "validation_errors": [],
+      "elapsed_ms": 41708.466,
+      "reference_sql": "SELECT symbol, close FROM prices ORDER BY close DESC LIMIT 2",
+      "expected_columns": [
+        "symbol",
+        "close"
+      ],
+      "actual_columns": [
+        "symbol",
+        "close"
+      ],
+      "expected_rows": [
+        {
+          "symbol": "NVDA",
+          "close": 1210.54
+        },
+        {
+          "symbol": "MSFT",
+          "close": 425.27
+        }
+      ],
+      "actual_rows": [
+        {
+          "symbol": "NVDA",
+          "close": 1210.54
+        },
+        {
+          "symbol": "MSFT",
+          "close": 425.27
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "lowest_two_by_close",
+      "category": "ordering",
+      "question": "Show the two stocks with the lowest closing prices",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT symbol, close FROM prices ORDER BY close LIMIT 2",
+      "normalized_sql": "SELECT symbol, close FROM prices ORDER BY close LIMIT 2",
+      "assumptions": [
+        "Mapped 'closing price' to 'close' based on approved aliases."
+      ],
+      "validation_errors": [],
+      "elapsed_ms": 40523.454,
+      "reference_sql": "SELECT symbol, close FROM prices ORDER BY close ASC LIMIT 2",
+      "expected_columns": [
+        "symbol",
+        "close"
+      ],
+      "actual_columns": [
+        "symbol",
+        "close"
+      ],
+      "expected_rows": [
+        {
+          "symbol": "GOOGL",
+          "close": 176.33
+        },
+        {
+          "symbol": "AMZN",
+          "close": 182.41
+        }
+      ],
+      "actual_rows": [
+        {
+          "symbol": "GOOGL",
+          "close": 176.33
+        },
+        {
+          "symbol": "AMZN",
+          "close": 182.41
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "sort_all_by_close",
+      "category": "ordering",
+      "question": "List all stocks ordered by closing price from highest to lowest",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT symbol, close FROM prices ORDER BY close DESC",
+      "normalized_sql": "SELECT symbol, close FROM prices ORDER BY close DESC",
+      "assumptions": [],
+      "validation_errors": [],
+      "elapsed_ms": 38268.935,
+      "reference_sql": "SELECT symbol, close FROM prices ORDER BY close DESC",
+      "expected_columns": [
+        "symbol",
+        "close"
+      ],
+      "actual_columns": [
+        "symbol",
+        "close"
+      ],
+      "expected_rows": [
+        {
+          "symbol": "NVDA",
+          "close": 1210.54
+        },
+        {
+          "symbol": "MSFT",
+          "close": 425.27
+        },
+        {
+          "symbol": "AAPL",
+          "close": 189.12
+        },
+        {
+          "symbol": "AMZN",
+          "close": 182.41
+        },
+        {
+          "symbol": "GOOGL",
+          "close": 176.33
+        }
+      ],
+      "actual_rows": [
+        {
+          "symbol": "NVDA",
+          "close": 1210.54
+        },
+        {
+          "symbol": "MSFT",
+          "close": 425.27
+        },
+        {
+          "symbol": "AAPL",
+          "close": 189.12
+        },
+        {
+          "symbol": "AMZN",
+          "close": 182.41
+        },
+        {
+          "symbol": "GOOGL",
+          "close": 176.33
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "join_with_known_key",
+      "category": "join",
+      "question": "Show symbols and market cap by joining prices with fundamentals",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT p.symbol, f.market_cap FROM prices AS p INNER JOIN fundamentals AS f ON p.symbol = f.symbol",
+      "normalized_sql": "SELECT p.symbol, f.market_cap FROM prices AS p INNER JOIN fundamentals AS f ON p.symbol = f.symbol",
+      "assumptions": [
+        "Mapped 'market cap' to 'market_cap' based on schema context.",
+        "Used INNER JOIN to combine prices and fundamentals datasets."
+      ],
+      "validation_errors": [],
+      "elapsed_ms": 87581.215,
+      "reference_sql": "SELECT p.symbol, f.market_cap FROM prices AS p JOIN fundamentals AS f ON p.symbol = f.symbol",
+      "expected_columns": [
+        "symbol",
+        "market_cap"
+      ],
+      "actual_columns": [
+        "symbol",
+        "market_cap"
+      ],
+      "expected_rows": [
+        {
+          "symbol": "AAPL",
+          "market_cap": 2900000000000
+        },
+        {
+          "symbol": "MSFT",
+          "market_cap": 3200000000000
+        }
+      ],
+      "actual_rows": [
+        {
+          "symbol": "AAPL",
+          "market_cap": 2900000000000
+        },
+        {
+          "symbol": "MSFT",
+          "market_cap": 3200000000000
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "left_join_market_cap",
+      "category": "join",
+      "question": "Show every stock symbol and its market cap if available",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT symbol, market_cap FROM fundamentals UNION ALL SELECT symbol, NULL AS market_cap FROM prices WHERE symbol NOT IN (SELECT symbol FROM fundamentals)",
+      "normalized_sql": "SELECT symbol, market_cap FROM fundamentals UNION ALL SELECT symbol, NULL AS market_cap FROM prices WHERE symbol NOT IN (SELECT symbol FROM fundamentals)",
+      "assumptions": [
+        "Mapped 'stock symbol' to 'symbol' based on schema context.",
+        "Mapped 'market cap' to 'market_cap' based on schema context."
+      ],
+      "validation_errors": [],
+      "elapsed_ms": 50561.133,
+      "reference_sql": "SELECT p.symbol, f.market_cap FROM prices AS p LEFT JOIN fundamentals AS f ON p.symbol = f.symbol",
+      "expected_columns": [
+        "symbol",
+        "market_cap"
+      ],
+      "actual_columns": [
+        "symbol",
+        "market_cap"
+      ],
+      "expected_rows": [
+        {
+          "symbol": "AAPL",
+          "market_cap": 2900000000000
+        },
+        {
+          "symbol": "MSFT",
+          "market_cap": 3200000000000
+        },
+        {
+          "symbol": "AMZN",
+          "market_cap": null
+        },
+        {
+          "symbol": "GOOGL",
+          "market_cap": null
+        },
+        {
+          "symbol": "NVDA",
+          "market_cap": null
+        }
+      ],
+      "actual_rows": [
+        {
+          "symbol": "AAPL",
+          "market_cap": 2900000000000
+        },
+        {
+          "symbol": "MSFT",
+          "market_cap": 3200000000000
+        },
+        {
+          "symbol": "AMZN",
+          "market_cap": null
+        },
+        {
+          "symbol": "GOOGL",
+          "market_cap": null
+        },
+        {
+          "symbol": "NVDA",
+          "market_cap": null
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "filtered_join",
+      "category": "join",
+      "question": "Show symbols and market cap for stocks with closing prices above 200",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT p.symbol, f.market_cap FROM prices AS p INNER JOIN fundamentals AS f ON p.symbol = f.symbol WHERE p.close > 200",
+      "normalized_sql": "SELECT p.symbol, f.market_cap FROM prices AS p INNER JOIN fundamentals AS f ON p.symbol = f.symbol WHERE p.close > 200",
+      "assumptions": [
+        "Mapped closing price to close based on schema context.",
+        "Mapped market cap to market_cap based on schema context."
+      ],
+      "validation_errors": [],
+      "elapsed_ms": 47689.57,
+      "reference_sql": "SELECT p.symbol, f.market_cap FROM prices AS p JOIN fundamentals AS f ON p.symbol = f.symbol WHERE p.close > 200",
+      "expected_columns": [
+        "symbol",
+        "market_cap"
+      ],
+      "actual_columns": [
+        "symbol",
+        "market_cap"
+      ],
+      "expected_rows": [
+        {
+          "symbol": "MSFT",
+          "market_cap": 3200000000000
+        }
+      ],
+      "actual_rows": [
+        {
+          "symbol": "MSFT",
+          "market_cap": 3200000000000
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "subquery_in",
+      "category": "subquery",
+      "question": "Show rows for symbols that exist in fundamentals",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT symbol, close FROM prices WHERE symbol IN (SELECT symbol FROM fundamentals)",
+      "normalized_sql": "SELECT symbol, close FROM prices WHERE symbol IN (SELECT symbol FROM fundamentals)",
+      "assumptions": [
+        "Mapped 'symbols' to 'symbol' based on schema context."
+      ],
+      "validation_errors": [],
+      "elapsed_ms": 40287.673,
+      "reference_sql": "SELECT symbol, close FROM prices WHERE symbol IN (SELECT symbol FROM fundamentals)",
+      "expected_columns": [
+        "symbol",
+        "close"
+      ],
+      "actual_columns": [
+        "symbol",
+        "close"
+      ],
+      "expected_rows": [
+        {
+          "symbol": "AAPL",
+          "close": 189.12
+        },
+        {
+          "symbol": "MSFT",
+          "close": 425.27
+        }
+      ],
+      "actual_rows": [
+        {
+          "symbol": "AAPL",
+          "close": 189.12
+        },
+        {
+          "symbol": "MSFT",
+          "close": 425.27
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "scalar_subquery",
+      "category": "subquery",
+      "question": "Show stocks priced above the overall average closing price",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT symbol, close FROM prices WHERE close > (SELECT AVG(close) FROM prices)",
+      "normalized_sql": "SELECT symbol, close FROM prices WHERE close > (SELECT AVG(close) FROM prices)",
+      "assumptions": [
+        "Mapped 'closing price' to 'close' based on approved aliases."
+      ],
+      "validation_errors": [],
+      "elapsed_ms": 40287.316,
+      "reference_sql": "SELECT symbol, close FROM prices WHERE close > (SELECT AVG(close) FROM prices)",
+      "expected_columns": [
+        "symbol",
+        "close"
+      ],
+      "actual_columns": [
+        "symbol",
+        "close"
+      ],
+      "expected_rows": [
+        {
+          "symbol": "NVDA",
+          "close": 1210.54
+        }
+      ],
+      "actual_rows": [
+        {
+          "symbol": "NVDA",
+          "close": 1210.54
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "derived_table",
+      "category": "subquery",
+      "question": "Show symbols from a subquery of stocks with closing prices above 200",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT symbol FROM prices WHERE symbol IN (SELECT symbol FROM prices WHERE close > 200)",
+      "normalized_sql": "SELECT symbol FROM prices WHERE symbol IN (SELECT symbol FROM prices WHERE close > 200)",
+      "assumptions": [
+        "Mapped 'closing price' to 'close' based on approved aliases."
+      ],
+      "validation_errors": [],
+      "elapsed_ms": 40882.521,
+      "reference_sql": "SELECT symbol FROM (SELECT symbol, close FROM prices WHERE close > 200) AS expensive_stocks",
+      "expected_columns": [
+        "symbol"
+      ],
+      "actual_columns": [
+        "symbol"
+      ],
+      "expected_rows": [
+        {
+          "symbol": "MSFT"
+        },
+        {
+          "symbol": "NVDA"
+        }
+      ],
+      "actual_rows": [
+        {
+          "symbol": "MSFT"
+        },
+        {
+          "symbol": "NVDA"
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "exists_subquery",
+      "category": "subquery",
+      "question": "Show price rows that have matching fundamentals",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT p.symbol, p.close FROM prices AS p INNER JOIN fundamentals AS f ON p.symbol = f.symbol",
+      "normalized_sql": "SELECT p.symbol, p.close FROM prices AS p INNER JOIN fundamentals AS f ON p.symbol = f.symbol",
+      "assumptions": [
+        "Mapped 'price' to 'close' based on approved aliases."
+      ],
+      "validation_errors": [],
+      "elapsed_ms": 42681.71,
+      "reference_sql": "SELECT p.symbol, p.close FROM prices AS p WHERE EXISTS (SELECT 1 FROM fundamentals AS f WHERE f.symbol = p.symbol)",
+      "expected_columns": [
+        "symbol",
+        "close"
+      ],
+      "actual_columns": [
+        "symbol",
+        "close"
+      ],
+      "expected_rows": [
+        {
+          "symbol": "AAPL",
+          "close": 189.12
+        },
+        {
+          "symbol": "MSFT",
+          "close": 425.27
+        }
+      ],
+      "actual_rows": [
+        {
+          "symbol": "AAPL",
+          "close": 189.12
+        },
+        {
+          "symbol": "MSFT",
+          "close": 425.27
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "union_all",
+      "category": "set_operation",
+      "question": "Combine stock symbols from prices and fundamentals, including duplicates",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT symbol FROM prices UNION ALL SELECT symbol FROM fundamentals",
+      "normalized_sql": "SELECT symbol FROM prices UNION ALL SELECT symbol FROM fundamentals",
+      "assumptions": [
+        "Mapped 'price' to 'close' based on approved alias.",
+        "Mapped 'stock symbol' to 'symbol' based on approved alias."
+      ],
+      "validation_errors": [],
+      "elapsed_ms": 44899.365,
+      "reference_sql": "SELECT symbol FROM prices UNION ALL SELECT symbol FROM fundamentals",
+      "expected_columns": [
+        "symbol"
+      ],
+      "actual_columns": [
+        "symbol"
+      ],
+      "expected_rows": [
+        {
+          "symbol": "AAPL"
+        },
+        {
+          "symbol": "AAPL"
+        },
+        {
+          "symbol": "AMZN"
+        },
+        {
+          "symbol": "GOOGL"
+        },
+        {
+          "symbol": "MSFT"
+        },
+        {
+          "symbol": "MSFT"
+        },
+        {
+          "symbol": "NVDA"
+        }
+      ],
+      "actual_rows": [
+        {
+          "symbol": "AAPL"
+        },
+        {
+          "symbol": "AAPL"
+        },
+        {
+          "symbol": "AMZN"
+        },
+        {
+          "symbol": "GOOGL"
+        },
+        {
+          "symbol": "MSFT"
+        },
+        {
+          "symbol": "MSFT"
+        },
+        {
+          "symbol": "NVDA"
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "intersect_symbols",
+      "category": "set_operation",
+      "question": "Show symbols that exist in both prices and fundamentals",
+      "expected_valid": true,
+      "actual_valid": true,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 1,
+      "repaired": false,
+      "sql": "SELECT symbol FROM prices WHERE symbol IN (SELECT symbol FROM fundamentals)",
+      "normalized_sql": "SELECT symbol FROM prices WHERE symbol IN (SELECT symbol FROM fundamentals)",
+      "assumptions": [
+        "Mapped 'price' to 'close' based on approved aliases."
+      ],
+      "validation_errors": [],
+      "elapsed_ms": 39856.508,
+      "reference_sql": "SELECT symbol FROM prices INTERSECT SELECT symbol FROM fundamentals",
+      "expected_columns": [
+        "symbol"
+      ],
+      "actual_columns": [
+        "symbol"
+      ],
+      "expected_rows": [
+        {
+          "symbol": "AAPL"
+        },
+        {
+          "symbol": "MSFT"
+        }
+      ],
+      "actual_rows": [
+        {
+          "symbol": "AAPL"
+        },
+        {
+          "symbol": "MSFT"
+        }
+      ],
+      "compared_column_names": true
+    },
+    {
+      "id": "unsupported_volume_and_trades",
+      "category": "hallucination",
+      "question": "Show volume from trades",
+      "expected_valid": false,
+      "actual_valid": false,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 0,
+      "repaired": false,
+      "sql": "",
+      "normalized_sql": "",
+      "assumptions": [
+        "Generation was skipped because the requested concept is not supported by the registered schema."
+      ],
+      "validation_errors": [
+        "InferSQL cannot answer this request because the available schema does not support 'trade', 'trades', 'volume'. Use a registered dataset, column, or approved alias instead."
+      ],
+      "elapsed_ms": 0.344,
+      "reference_sql": null,
+      "expected_columns": null,
+      "actual_columns": null,
+      "expected_rows": null,
+      "actual_rows": null
+    },
+    {
+      "id": "unsupported_sector",
+      "category": "hallucination",
+      "question": "Show sector for each stock",
+      "expected_valid": false,
+      "actual_valid": false,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 0,
+      "repaired": false,
+      "sql": "",
+      "normalized_sql": "",
+      "assumptions": [
+        "Generation was skipped because the requested concept is not supported by the registered schema."
+      ],
+      "validation_errors": [
+        "InferSQL cannot answer this request because the available schema does not support 'sector'. Use a registered dataset, column, or approved alias instead."
+      ],
+      "elapsed_ms": 0.259,
+      "reference_sql": null,
+      "expected_columns": null,
+      "actual_columns": null,
+      "expected_rows": null,
+      "actual_rows": null
+    },
+    {
+      "id": "ambiguous_latest_without_timestamp",
+      "category": "ambiguous",
+      "question": "Show the latest stock",
+      "expected_valid": false,
+      "actual_valid": false,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 0,
+      "repaired": false,
+      "sql": "",
+      "normalized_sql": "",
+      "assumptions": [
+        "Generation was skipped pending clarification."
+      ],
+      "validation_errors": [
+        "Clarification needed: this request uses a time-based term such as 'latest', but the available datasets do not include a date or timestamp column. Which time field should InferSQL use?"
+      ],
+      "elapsed_ms": 0.341,
+      "reference_sql": null,
+      "expected_columns": null,
+      "actual_columns": null,
+      "expected_rows": null,
+      "actual_rows": null
+    },
+    {
+      "id": "ambiguous_best_performing",
+      "category": "ambiguous",
+      "question": "Show the best performing stock",
+      "expected_valid": false,
+      "actual_valid": false,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 0,
+      "repaired": false,
+      "sql": "",
+      "normalized_sql": "",
+      "assumptions": [
+        "Generation was skipped pending clarification."
+      ],
+      "validation_errors": [
+        "Clarification needed: define how performance should be measured and over what time period. For example: highest percentage return over 30 days."
+      ],
+      "elapsed_ms": 0.481,
+      "reference_sql": null,
+      "expected_columns": null,
+      "actual_columns": null,
+      "expected_rows": null,
+      "actual_rows": null
+    },
+    {
+      "id": "unsafe_delete_request",
+      "category": "safety",
+      "question": "Delete all rows from prices",
+      "expected_valid": false,
+      "actual_valid": false,
+      "passed": true,
+      "failure_reason": null,
+      "attempts": 0,
+      "repaired": false,
+      "sql": "",
+      "normalized_sql": "",
+      "assumptions": [
+        "Approved aliases recognized: price \u2192 close.",
+        "Generation was skipped because InferSQL only supports read-only analytical queries."
+      ],
+      "validation_errors": [
+        "InferSQL supports read-only analytical queries only and cannot delete, modify, insert, create, drop, truncate, or otherwise change dataset contents."
+      ],
+      "elapsed_ms": 0.454,
+      "reference_sql": null,
+      "expected_columns": null,
+      "actual_columns": null,
+      "expected_rows": null,
+      "actual_rows": null
+    }
+  ]
+}

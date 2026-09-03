@@ -95,3 +95,35 @@ def test_validate_referenced_schema_rejects_unknown_column() -> None:
         match="Unknown column 'volume' on dataset 'prices'",
     ):
         service._validate_referenced_schema("SELECT volume FROM prices")
+
+def test_validate_referenced_schema_accepts_top_level_derived_table() -> None:
+    service = build_query_service()
+
+    service._validate_referenced_schema(
+        "SELECT symbol "
+        "FROM (SELECT symbol, close FROM prices WHERE close > 200) AS expensive_stocks"
+    )
+
+
+def test_validate_referenced_schema_accepts_union_all_across_tables() -> None:
+    service = build_query_service()
+
+    service._validate_referenced_schema(
+        "SELECT symbol FROM prices UNION ALL SELECT symbol FROM prices"
+    )
+
+
+def test_validate_referenced_schema_accepts_intersect_across_tables() -> None:
+    service = build_query_service()
+
+    service._validate_referenced_schema(
+        "SELECT symbol FROM prices INTERSECT SELECT symbol FROM prices"
+    )
+
+def test_validate_referenced_schema_accepts_except_across_tables() -> None:
+    service = build_query_service()
+
+    service._validate_referenced_schema(
+        "SELECT symbol FROM prices EXCEPT SELECT symbol FROM prices"
+    )
+

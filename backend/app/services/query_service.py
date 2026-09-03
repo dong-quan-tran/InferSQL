@@ -571,6 +571,30 @@ class QueryService:
             ),
         )
 
+    def _validate_set_operation_branches(self, expression: exp.Expression) -> None:
+        if not isinstance(expression, (exp.Union, exp.Intersect, exp.Except)):
+            return
+
+        for branch in (expression.left, expression.right):
+            self._validate_select_lists(branch)
+
+            branch_tables = self._extract_referenced_tables(branch)
+            if not branch_tables and not self._has_top_level_derived_from(branch):
+                raise UnsupportedQueryError("Query must reference a dataset")
+
+            branch_alias_to_table = self._build_alias_to_table_map(branch)
+            branch_columns_by_table = (
+                self._load_available_columns_by_table(branch_tables)
+                if branch_tables
+                else {}
+            )
+
+            self._validate_columns(
+                branch,
+                branch_alias_to_table,
+                branch_columns_by_table,
+            )
+
     def _validate_referenced_schema(self, sql: str) -> SchemaReferenceSummary:
         normalized_sql = " ".join(sql.strip().split())
         if not normalized_sql:
@@ -579,27 +603,58 @@ class QueryService:
         expression = self.query_parser.parse(normalized_sql)
         self._validate_select_lists(expression)
 
-        tables = self._extract_referenced_tables(expression)
+        if self._has_set_operation(expression):
+            self._validate_set_operation_branches(expression)
+            tables = self._extract_referenced_tables(expression)
+            available_columns_by_table = self._load_available_columns_by_table(tables)
+            merged_columns = sorted(
+                {
+                    column_name
+                    for column_names in available_columns_by_table.values()
+                    for column_name in column_names
+                }
+            )
+            return SchemaReferenceSummary(
+                dataset_name="__set_operation__",
+                columns=self._extract_column_names(expression),
+                available_columns=merged_columns,
+            )
+
         has_derived_from = self._has_top_level_derived_from(expression)
+        tables = self._extract_referenced_tables(expression)
 
         if not tables and not has_derived_from:
             raise UnsupportedQueryError("Query must reference a dataset")
 
-        alias_to_table = self._build_alias_to_table_map(expression)
-        available_columns_by_table = self._load_available_columns_by_table(tables) if tables else {}
+        if has_derived_from:
+            self._validate_referenced_tables_exist(normalized_sql)
+            return SchemaReferenceSummary(
+                dataset_name="__derived__",
+                columns=self._extract_column_names(expression),
+                available_columns=[],
+            )
 
-        self._validate_columns(expression, alias_to_table, available_columns_by_table)
+        alias_to_table = self._build_alias_to_table_map(expression)
+        available_columns_by_table = self._load_available_columns_by_table(tables)
+
+        self._validate_columns(
+            expression,
+            alias_to_table,
+            available_columns_by_table,
+        )
 
         if (
             len(tables) == 1
             and isinstance(expression, exp.Select)
-            and not has_derived_from
             and expression.find(exp.Subquery) is None
-            and not self._has_set_operation(expression)
         ):
             dataset_name = tables[0]
             available_columns = sorted(available_columns_by_table[dataset_name])
-            self._validate_single_table_grouping(expression, dataset_name, available_columns)
+            self._validate_single_table_grouping(
+                expression,
+                dataset_name,
+                available_columns,
+            )
             return SchemaReferenceSummary(
                 dataset_name=dataset_name,
                 columns=self._extract_column_names(expression),
@@ -615,9 +670,7 @@ class QueryService:
         )
 
         return SchemaReferenceSummary(
-            dataset_name="__derived__" if has_derived_from and not tables else (
-                "__multiple__" if len(tables) > 1 else (tables[0] if tables else "__derived__")
-            ),
+            dataset_name="__multiple__" if len(tables) > 1 else tables[0],
             columns=self._extract_column_names(expression),
             available_columns=merged_columns,
         )
@@ -902,7 +955,11 @@ class QueryService:
         return False
 
     def _has_set_operation(self, expression: exp.Expression) -> bool:
-        return expression.find(exp.Union) is not None
+        return (
+            expression.find(exp.Union) is not None
+            or expression.find(exp.Intersect) is not None
+            or expression.find(exp.Except) is not None
+        )
 
     def _supports_custom_planner(self, expression: exp.Expression) -> bool:
         if not isinstance(expression, exp.Select):

@@ -236,3 +236,48 @@ def test_copilot_service_executes_only_after_valid_sql() -> None:
     assert result.validation.is_valid is True
     assert result.execution is not None
     assert query_service.executed_sql == ["SELECT symbol, close FROM prices LIMIT 1"]
+
+def test_blocks_write_intent_before_generation_validation_and_execution() -> None:
+    class FailIfCalledProvider:
+        @property
+        def provider_name(self) -> str:
+            return "test-provider"
+
+        @property
+        def model_name(self) -> str:
+            return "test-model"
+
+        def generate_sql_candidate(self, question: str, schema_context: str):
+            raise AssertionError(
+                "LLM generation must not run for a write-intent request."
+            )
+
+    class FailIfUsedQueryService:
+        def validate(self, *args, **kwargs):
+            raise AssertionError(
+                "Validation must not run for a write-intent request."
+            )
+
+        def execute(self, *args, **kwargs):
+            raise AssertionError(
+                "Execution must not run for a write-intent request."
+            )
+
+    service = CopilotService(
+        dataset_registry=build_registry(),
+        query_service=FailIfUsedQueryService(),
+        llm_provider=FailIfCalledProvider(),
+    )
+
+    result = service.query("Delete all rows from prices", execute=True)
+
+    assert result.validation.is_valid is False
+    assert result.attempts == 0
+    assert result.execution is None
+    assert "read-only analytical queries" in result.validation.errors[0]
+    assert any(
+        "Generation was skipped because InferSQL only supports read-only"
+        in assumption
+        for assumption in result.candidate.assumptions
+    )
+

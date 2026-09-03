@@ -1,0 +1,6 @@
+# Local backups and generated runtime artifacts
+*.bak
+*.before_*.bak
+artifacts/
+__pycache__/
+*.pyc

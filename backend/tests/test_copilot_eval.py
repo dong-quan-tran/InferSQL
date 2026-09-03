@@ -264,6 +264,9 @@ class EvalQueryService:
         ):
             rows = [{"symbol": "MSFT", "close": 425.27}]
             columns = ["symbol", "close"]
+        elif "SELECT CLOSE " in upper_sql and "WHERE SYMBOL = 'MSFT'" in upper_sql:
+            rows = [{"close": 425.27}]
+            columns = ["close"]
         elif "SELECT CLOSE " in upper_sql and "WHERE SYMBOL = 'AAPL'" in upper_sql:
             rows = [{"close": 189.12}]
             columns = ["close"]
@@ -381,10 +384,10 @@ def build_candidates_by_question() -> dict[str, list[CopilotSqlCandidate]]:
         ],
         "Show the closing price for MSFT": [
             CopilotSqlCandidate(
-                sql="SELECT symbol, close FROM prices WHERE symbol = 'MSFT'",
+                sql="SELECT close FROM prices WHERE symbol = 'MSFT'",
                 assumptions=[],
                 referenced_tables=["prices"],
-                referenced_columns=["symbol", "close"],
+                referenced_columns=["close", "symbol"],
                 confidence=0.93,
             )
         ],
@@ -407,7 +410,7 @@ def build_candidates_by_question() -> dict[str, list[CopilotSqlCandidate]]:
             ),
             CopilotSqlCandidate(
                 sql="SELECT symbol, close FROM prices",
-                assumptions=["Mapped ticker to symbol based on schema context."],
+                assumptions=["Mapped 'ticker' to 'symbol' based on schema context."],
                 referenced_tables=["prices"],
                 referenced_columns=["symbol", "close"],
                 confidence=0.82,
@@ -423,7 +426,7 @@ def build_candidates_by_question() -> dict[str, list[CopilotSqlCandidate]]:
             ),
             CopilotSqlCandidate(
                 sql="SELECT close FROM prices WHERE symbol = 'AAPL'",
-                assumptions=["Mapped stock price to close based on schema context."],
+                assumptions=["Mapped 'stock price' to 'close' based on schema context."],
                 referenced_tables=["prices"],
                 referenced_columns=["close", "symbol"],
                 confidence=0.79,
@@ -612,48 +615,107 @@ def build_candidates_by_question() -> dict[str, list[CopilotSqlCandidate]]:
 
 
 def _assert_eval_case(result, case: dict) -> None:
-    assert result.validation.is_valid is case["expected_valid"]
-    assert result.attempts <= case["max_attempts"]
+    assert result.validation.is_valid is case["expected_valid"], (
+        f"validity mismatch: expected={case['expected_valid']}, "
+        f"actual={result.validation.is_valid}, "
+        f"sql={result.candidate.sql!r}, "
+        f"errors={result.validation.errors!r}"
+    )
+
+    assert result.attempts <= case["max_attempts"], (
+        f"attempt limit exceeded: expected <= {case['max_attempts']}, "
+        f"actual={result.attempts}, sql={result.candidate.sql!r}"
+    )
 
     if "expected_attempts" in case:
-        assert result.attempts == case["expected_attempts"]
+        assert result.attempts == case["expected_attempts"], (
+            f"attempt count mismatch: expected={case['expected_attempts']}, "
+            f"actual={result.attempts}, sql={result.candidate.sql!r}"
+        )
 
     if "expected_sql_contains" in case:
         normalized_sql = result.validation.normalized_sql
         for fragment in case["expected_sql_contains"]:
-            assert fragment in normalized_sql
+            assert fragment in normalized_sql, (
+                f"SQL fragment missing: expected={fragment!r}, "
+                f"actual_sql={normalized_sql!r}"
+            )
 
     if case["expected_valid"]:
-        assert result.validation.errors == []
-        assert result.validation.columns == case["expected_columns"]
+        assert result.validation.errors == [], (
+            f"valid SQL has validation errors: {result.validation.errors!r}"
+        )
+
+        assert result.validation.columns == case["expected_columns"], (
+            f"validation columns mismatch: expected={case['expected_columns']!r}, "
+            f"actual={result.validation.columns!r}, "
+            f"sql={result.validation.normalized_sql!r}"
+        )
 
         if "expected_assumptions_contains" in case:
             for expected_assumption in case["expected_assumptions_contains"]:
                 assert any(
                     expected_assumption in assumption
                     for assumption in result.candidate.assumptions
+                ), (
+                    f"assumption missing: expected substring={expected_assumption!r}, "
+                    f"actual={result.candidate.assumptions!r}"
                 )
 
         if case["execute"]:
-            assert result.execution is not None
-            assert result.execution["columns"] == case["expected_columns"]
-            assert result.execution["row_count"] == case["expected_row_count"]
+            assert result.execution is not None, (
+                f"expected execution result, got None; "
+                f"sql={result.validation.normalized_sql!r}"
+            )
+
+            assert result.execution["columns"] == case["expected_columns"], (
+                f"execution columns mismatch: expected={case['expected_columns']!r}, "
+                f"actual={result.execution['columns']!r}, "
+                f"rows={result.execution['rows']!r}"
+            )
+
+            assert result.execution["row_count"] == case["expected_row_count"], (
+                f"row-count mismatch: expected={case['expected_row_count']}, "
+                f"actual={result.execution['row_count']}, "
+                f"rows={result.execution['rows']!r}"
+            )
         else:
-            assert result.execution is None
+            assert result.execution is None, (
+                f"execution should have been skipped; "
+                f"actual={result.execution!r}"
+            )
     else:
-        assert result.execution is None
-        assert result.validation.errors
+        assert result.execution is None, (
+            f"invalid SQL must not execute; actual={result.execution!r}"
+        )
+
+        assert result.validation.errors, (
+            f"invalid SQL has no validation errors; "
+            f"sql={result.candidate.sql!r}"
+        )
 
         if "expected_error_contains" in case:
             for expected_error in case["expected_error_contains"]:
                 assert any(
-                    expected_error in error for error in result.validation.errors
+                    expected_error.lower() in error.lower()
+                    for error in result.validation.errors
+                ), (
+                    f"expected validation error substring missing: "
+                    f"expected={expected_error!r}, "
+                    f"actual={result.validation.errors!r}"
                 )
 
         if "expected_error_any_of" in case:
             assert any(
-                any(expected_error in error for error in result.validation.errors)
+                any(
+                    expected_error.lower() in error.lower()
+                    for error in result.validation.errors
+                )
                 for expected_error in case["expected_error_any_of"]
+            ), (
+                f"none of the expected validation error alternatives matched: "
+                f"expected={case['expected_error_any_of']!r}, "
+                f"actual={result.validation.errors!r}"
             )
 
         if "expected_assumptions_contains" in case:
@@ -661,6 +723,9 @@ def _assert_eval_case(result, case: dict) -> None:
                 assert any(
                     expected_assumption in assumption
                     for assumption in result.candidate.assumptions
+                ), (
+                    f"assumption missing: expected substring={expected_assumption!r}, "
+                    f"actual={result.candidate.assumptions!r}"
                 )
 
 

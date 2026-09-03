@@ -48,6 +48,28 @@ PERFORMANCE_COLUMN_TOKENS = {
     "yield",
 }
 
+WRITE_INTENT_PATTERNS = (
+    ("add", re.compile(r"\badd\b")),
+    ("alter", re.compile(r"\balter\b")),
+    ("change", re.compile(r"\bchange\b")),
+    ("create", re.compile(r"\bcreate\b")),
+    ("delete", re.compile(r"\bdelete(?:s|d|ing)?\b")),
+    ("drop", re.compile(r"\bdrop(?:s|ped|ping)?\b")),
+    ("insert", re.compile(r"\binsert(?:s|ed|ing)?\b")),
+    ("modify", re.compile(r"\bmodify(?:s|ied|ing)?\b")),
+    ("overwrite", re.compile(r"\boverwrite(?:s|n|ing)?\b")),
+    ("remove", re.compile(r"\bremove(?:s|d|ing)?\b")),
+    ("replace", re.compile(r"\breplace(?:s|d|ing)?\b")),
+    ("truncate", re.compile(r"\btruncate(?:s|d|ing)?\b")),
+    ("update", re.compile(r"\bupdate(?:s|d|ing)?\b")),
+    ("write", re.compile(r"\bwrite(?:s|n|ing)?\b")),
+)
+
+READ_ONLY_POLICY_ERROR = (
+    "InferSQL supports read-only analytical queries only and cannot delete, "
+    "modify, insert, create, drop, truncate, or otherwise change dataset contents."
+)
+
 
 @dataclass(frozen=True)
 class IntentGateDecision:
@@ -91,6 +113,17 @@ class CopilotIntentGuard:
             normalized_question=normalized_question,
             aliases=aliases,
         )
+
+        write_intents = self._find_write_intents(normalized_question)
+        if write_intents:
+            return IntentGateDecision(
+                allowed=False,
+                errors=[READ_ONLY_POLICY_ERROR],
+                clarification_question=None,
+                matched_aliases=matched_aliases,
+                unsupported_terms=write_intents,
+                ambiguous_terms=[],
+            )
 
         ambiguity = self._find_ambiguity(
             normalized_question=normalized_question,
@@ -195,6 +228,18 @@ class CopilotIntentGuard:
             for alias, target in aliases.items()
             if alias in normalized_question
         }
+
+    def _find_write_intents(self, normalized_question: str) -> list[str]:
+        matched = [
+            intent
+            for intent, pattern in WRITE_INTENT_PATTERNS
+            if pattern.search(normalized_question)
+        ]
+
+        if re.search(r"\bget rid of\b", normalized_question):
+            matched.append("get rid of")
+
+        return sorted(set(matched))
 
     def _find_ambiguity(
         self,
