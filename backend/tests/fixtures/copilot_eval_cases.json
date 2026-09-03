@@ -75,7 +75,7 @@
         "max_attempts": 3
     },
     {
-        "id": "invalid_unknown_column_then_repair",
+        "id": "ticker_alias_then_repair",
         "category": "synonym",
         "question": "Show ticker and close",
         "execute": false,
@@ -96,7 +96,7 @@
         "max_attempts": 3
     },
     {
-        "id": "invalid_price_synonym_then_repair",
+        "id": "stock_price_alias_then_repair",
         "category": "synonym",
         "question": "Show stock price for AAPL",
         "execute": true,
@@ -119,58 +119,74 @@
         "max_attempts": 3
     },
     {
-        "id": "hallucinated_table_request",
+        "id": "unsupported_volume_and_trades",
         "category": "hallucination",
         "question": "Show volume from trades",
         "execute": false,
         "expected_valid": false,
-        "expected_error_any_of": [
-            "Unknown dataset",
-            "Generated SQL references unsupported dataset or column"
+        "expected_error_contains": [
+            "does not support",
+            "volume",
+            "trade"
         ],
-        "max_attempts": 3
+        "expected_assumptions_contains": [
+            "Generation was skipped"
+        ],
+        "expected_attempts": 0,
+        "expected_model_calls": 0,
+        "max_attempts": 0
     },
     {
-        "id": "hallucinated_column_request",
+        "id": "unsupported_sector",
         "category": "hallucination",
         "question": "Show sector for each stock",
         "execute": false,
         "expected_valid": false,
-        "expected_error_any_of": [
-            "Unknown column",
-            "Generated SQL references unsupported dataset or column"
-        ],
-        "max_attempts": 3
-    },
-    {
-        "id": "unsupported_multi_table_intent",
-        "category": "unsupported_feature",
-        "question": "Join prices with fundamentals",
-        "execute": false,
-        "expected_valid": true,
-        "expected_sql_contains": [
-            "SELECT",
-            "FROM fundamentals"
-        ],
-        "expected_columns": [
-            "close"
+        "expected_error_contains": [
+            "does not support",
+            "sector"
         ],
         "expected_assumptions_contains": [
-            "Assumed a fundamentals dataset exists."
+            "Generation was skipped"
         ],
-        "max_attempts": 3
+        "expected_attempts": 0,
+        "expected_model_calls": 0,
+        "max_attempts": 0
     },
     {
-        "id": "unsupported_join_request",
+        "id": "underspecified_join_request",
+        "category": "ambiguous",
+        "question": "Join prices with fundamentals",
+        "execute": false,
+        "expected_valid": false,
+        "expected_error_contains": [
+            "Clarification needed",
+            "which columns"
+        ],
+        "expected_assumptions_contains": [
+            "Generation was skipped"
+        ],
+        "expected_attempts": 0,
+        "expected_model_calls": 0,
+        "max_attempts": 0
+    },
+    {
+        "id": "unsupported_join_with_trades",
         "category": "unsupported_feature",
         "question": "Join prices with trades and show symbol and volume",
         "execute": false,
         "expected_valid": false,
-        "expected_error_any_of": [
-            "Unknown dataset",
-            "Only single-table queries are supported right now"
+        "expected_error_contains": [
+            "does not support",
+            "trade",
+            "volume"
         ],
-        "max_attempts": 3
+        "expected_assumptions_contains": [
+            "Generation was skipped"
+        ],
+        "expected_attempts": 0,
+        "expected_model_calls": 0,
+        "max_attempts": 0
     },
     {
         "id": "supported_aggregate_request",
@@ -189,42 +205,38 @@
         "max_attempts": 2
     },
     {
-        "id": "ambiguous_latest_stock_request",
+        "id": "ambiguous_latest_without_timestamp",
         "category": "ambiguous",
         "question": "Show the latest stock",
         "execute": false,
-        "expected_valid": true,
-        "expected_sql_contains": [
-            "SELECT",
-            "FROM prices",
-            "symbol"
-        ],
-        "expected_columns": [
-            "symbol"
+        "expected_valid": false,
+        "expected_error_contains": [
+            "Clarification needed",
+            "date or timestamp"
         ],
         "expected_assumptions_contains": [
-            "Interpreted latest"
+            "pending clarification"
         ],
-        "max_attempts": 2
+        "expected_attempts": 0,
+        "expected_model_calls": 0,
+        "max_attempts": 0
     },
     {
-        "id": "ambiguous_best_performing_request",
+        "id": "ambiguous_best_performing",
         "category": "ambiguous",
         "question": "Show the best performing stock",
         "execute": false,
-        "expected_valid": true,
-        "expected_sql_contains": [
-            "SELECT",
-            "FROM prices",
-            "symbol"
-        ],
-        "expected_columns": [
-            "symbol"
+        "expected_valid": false,
+        "expected_error_contains": [
+            "Clarification needed",
+            "performance"
         ],
         "expected_assumptions_contains": [
-            "Could not determine best performing"
+            "pending clarification"
         ],
-        "max_attempts": 2
+        "expected_attempts": 0,
+        "expected_model_calls": 0,
+        "max_attempts": 0
     },
     {
         "id": "join_with_known_key",

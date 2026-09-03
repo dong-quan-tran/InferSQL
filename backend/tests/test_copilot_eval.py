@@ -27,7 +27,9 @@ EVAL_CASES = load_eval_cases()
 
 
 class EvalLLMProvider:
-    def __init__(self, candidates_by_question: dict[str, list[CopilotSqlCandidate]]) -> None:
+    def __init__(
+        self, candidates_by_question: dict[str, list[CopilotSqlCandidate]]
+    ) -> None:
         self._candidates_by_question = candidates_by_question
         self._call_counts: dict[str, int] = {}
         self._last_original_question: str | None = None
@@ -40,7 +42,13 @@ class EvalLLMProvider:
     def model_name(self) -> str:
         return "eval-model"
 
-    def generate_sql_candidate(self, question: str, schema_context: str) -> CopilotSqlCandidate:
+    @property
+    def total_calls(self) -> int:
+        return sum(self._call_counts.values())
+
+    def generate_sql_candidate(
+        self, question: str, schema_context: str
+    ) -> CopilotSqlCandidate:
         original_question = self._extract_original_question(question)
         self._last_original_question = original_question
 
@@ -81,7 +89,9 @@ class EvalQueryService:
     def __init__(self) -> None:
         self.executed_sql: list[str] = []
 
-    def validate(self, sql: str, request_id: str | None = None, debug: bool = False) -> dict:
+    def validate(
+        self, sql: str, request_id: str | None = None, debug: bool = False
+    ) -> dict:
         normalized_sql = " ".join(sql.strip().split())
         upper_sql = normalized_sql.upper()
 
@@ -112,7 +122,11 @@ class EvalQueryService:
                 columns=["ticker", "close"],
             )
 
-        if "SELECT PRICE " in upper_sql or "SELECT PRICE," in upper_sql or " PRICE FROM " in upper_sql:
+        if (
+            "SELECT PRICE " in upper_sql
+            or "SELECT PRICE," in upper_sql
+            or " PRICE FROM " in upper_sql
+        ):
             return self._invalid(
                 sql=sql,
                 normalized_sql=normalized_sql,
@@ -182,11 +196,22 @@ class EvalQueryService:
             return ["count"]
         if "AVG(" in upper_sql and "GROUP BY" in upper_sql:
             return ["symbol", "avg_close"]
-        if "SELECT SYMBOL, CLOSE " in upper_sql or "SELECT SYMBOL, CLOSE FROM " in upper_sql:
+        if (
+            "SELECT SYMBOL, CLOSE " in upper_sql
+            or "SELECT SYMBOL, CLOSE FROM " in upper_sql
+        ):
             return ["symbol", "close"]
-        if "SELECT CLOSE " in upper_sql or "SELECT CLOSE FROM " in upper_sql or "SELECT CLOSE," in upper_sql:
+        if (
+            "SELECT CLOSE " in upper_sql
+            or "SELECT CLOSE FROM " in upper_sql
+            or "SELECT CLOSE," in upper_sql
+        ):
             return ["close"]
-        if "SELECT SYMBOL " in upper_sql or "SELECT SYMBOL FROM " in upper_sql or "SELECT SYMBOL," in upper_sql:
+        if (
+            "SELECT SYMBOL " in upper_sql
+            or "SELECT SYMBOL FROM " in upper_sql
+            or "SELECT SYMBOL," in upper_sql
+        ):
             return ["symbol"]
         return ["close"]
 
@@ -213,7 +238,9 @@ class EvalQueryService:
             "has_limit": "LIMIT" in upper_sql,
         }
 
-    def execute(self, sql: str, request_id: str | None = None, debug: bool = False) -> dict:
+    def execute(
+        self, sql: str, request_id: str | None = None, debug: bool = False
+    ) -> dict:
         normalized_sql = " ".join(sql.strip().split())
         self.executed_sql.append(normalized_sql)
 
@@ -231,13 +258,19 @@ class EvalQueryService:
                 {"symbol": "MSFT", "close": 425.27},
             ]
             columns = ["symbol", "close"]
-        elif "SELECT SYMBOL, CLOSE " in upper_sql and "WHERE SYMBOL = 'MSFT'" in upper_sql:
+        elif (
+            "SELECT SYMBOL, CLOSE " in upper_sql
+            and "WHERE SYMBOL = 'MSFT'" in upper_sql
+        ):
             rows = [{"symbol": "MSFT", "close": 425.27}]
             columns = ["symbol", "close"]
         elif "SELECT CLOSE " in upper_sql and "WHERE SYMBOL = 'AAPL'" in upper_sql:
             rows = [{"close": 189.12}]
             columns = ["close"]
-        elif "SELECT SYMBOL, CLOSE " in upper_sql and "WHERE SYMBOL = 'AAPL'" in upper_sql:
+        elif (
+            "SELECT SYMBOL, CLOSE " in upper_sql
+            and "WHERE SYMBOL = 'AAPL'" in upper_sql
+        ):
             rows = [{"symbol": "AAPL", "close": 189.12}]
             columns = ["symbol", "close"]
         elif "WHERE CLOSE > 200" in upper_sql:
@@ -255,7 +288,9 @@ class EvalQueryService:
                 {"symbol": "MSFT", "avg_close": 425.27},
             ]
             columns = ["symbol", "avg_close"]
-        elif "SYMBOL, CLOSE" in upper_sql or ("SYMBOL" in upper_sql and "CLOSE" in upper_sql):
+        elif "SYMBOL, CLOSE" in upper_sql or (
+            "SYMBOL" in upper_sql and "CLOSE" in upper_sql
+        ):
             rows = [
                 {"symbol": "AAPL", "close": 189.12},
                 {"symbol": "MSFT", "close": 425.27},
@@ -524,7 +559,9 @@ def build_candidates_by_question() -> dict[str, list[CopilotSqlCandidate]]:
                     "FROM prices "
                     "JOIN fundamentals ON prices.symbol = fundamentals.symbol"
                 ),
-                assumptions=["Used symbol as the join key because it exists in both datasets."],
+                assumptions=[
+                    "Used symbol as the join key because it exists in both datasets."
+                ],
                 referenced_tables=["prices", "fundamentals"],
                 referenced_columns=["symbol", "market_cap"],
                 confidence=0.88,
@@ -578,6 +615,9 @@ def _assert_eval_case(result, case: dict) -> None:
     assert result.validation.is_valid is case["expected_valid"]
     assert result.attempts <= case["max_attempts"]
 
+    if "expected_attempts" in case:
+        assert result.attempts == case["expected_attempts"]
+
     if "expected_sql_contains" in case:
         normalized_sql = result.validation.normalized_sql
         for fragment in case["expected_sql_contains"]:
@@ -616,6 +656,13 @@ def _assert_eval_case(result, case: dict) -> None:
                 for expected_error in case["expected_error_any_of"]
             )
 
+        if "expected_assumptions_contains" in case:
+            for expected_assumption in case["expected_assumptions_contains"]:
+                assert any(
+                    expected_assumption in assumption
+                    for assumption in result.candidate.assumptions
+                )
+
 
 @pytest.mark.parametrize("case", EVAL_CASES, ids=[case["id"] for case in EVAL_CASES])
 def test_copilot_eval_cases(case: dict) -> None:
@@ -630,6 +677,9 @@ def test_copilot_eval_cases(case: dict) -> None:
 
     result = service.query(case["question"], execute=case["execute"])
     _assert_eval_case(result, case)
+
+    if case.get("expected_model_calls") is not None:
+        assert provider.total_calls == case["expected_model_calls"]
 
 
 def test_copilot_eval_suite_summary() -> None:

@@ -9,10 +9,12 @@ from app.schemas.copilot import (
     CopilotSqlCandidate,
     CopilotValidationResult,
 )
+from app.services.copilot_intent_guard import CopilotIntentGuard
 from app.services.copilot_schema_context import CopilotSchemaContextBuilder
 from app.services.copilot_schema_selector import CopilotSchemaSelector
 from app.services.llm.base import LLMProvider
 from app.services.query_service import QueryService
+
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +33,7 @@ class CopilotService:
         self.max_retries = max_retries
         self.schema_context_builder = CopilotSchemaContextBuilder(dataset_registry)
         self.schema_selector = CopilotSchemaSelector(dataset_registry)
+        self.intent_guard = CopilotIntentGuard(dataset_registry)
 
     def query(
         self,
@@ -38,12 +41,22 @@ class CopilotService:
         execute: bool = False,
         request_id: str | None = None,
     ) -> CopilotQueryResponse:
+        intent_decision = self.intent_guard.evaluate(question)
+        if not intent_decision.allowed:
+            return self._blocked_response(
+                question=question,
+                errors=intent_decision.errors,
+                clarification_question=intent_decision.clarification_question,
+                matched_aliases=intent_decision.matched_aliases,
+            )
+
         schema_context = self._build_schema_context(question)
         retry_history: list[CopilotRetryStep] = []
 
         prompt_question = self._build_generation_prompt(
             question=question,
             schema_context=schema_context,
+            matched_aliases=intent_decision.matched_aliases,
         )
 
         candidate = self.llm_provider.generate_sql_candidate(
@@ -106,6 +119,73 @@ class CopilotService:
             retry_history=retry_history,
         )
 
+    def _blocked_response(
+        self,
+        question: str,
+        errors: list[str],
+        clarification_question: str | None,
+        matched_aliases: dict[str, str],
+    ) -> CopilotQueryResponse:
+        assumptions: list[str] = []
+
+        if matched_aliases:
+            formatted_aliases = ", ".join(
+                f"{source} → {target}"
+                for source, target in sorted(matched_aliases.items())
+            )
+            assumptions.append(f"Approved aliases recognized: {formatted_aliases}.")
+
+        if clarification_question:
+            assumptions.append("Generation was skipped pending clarification.")
+        else:
+            assumptions.append(
+                "Generation was skipped because the requested concept is not supported "
+                "by the registered schema."
+            )
+
+        candidate = CopilotSqlCandidate(
+            sql="",
+            assumptions=assumptions,
+            referenced_tables=[],
+            referenced_columns=[],
+            confidence=0.0,
+        )
+
+        validation = CopilotValidationResult(
+            is_valid=False,
+            normalized_sql="",
+            errors=errors,
+            tables=[],
+            columns=[],
+            query_type=None,
+            has_where=False,
+            has_group_by=False,
+            has_order_by=False,
+            has_limit=False,
+        )
+
+        logger.info(
+            "copilot request blocked before generation",
+            extra={
+                "stage": "copilot_intent_gate",
+                "question": question,
+                "errors": errors,
+                "clarification_question": clarification_question,
+            },
+        )
+
+        return CopilotQueryResponse(
+            question=question,
+            provider=self.llm_provider.provider_name,
+            model=self.llm_provider.model_name,
+            candidate=candidate,
+            validation=validation,
+            execution=None,
+            attempts=0,
+            repaired=False,
+            retry_history=[],
+        )
+
     def _validate_candidate(
         self,
         candidate: CopilotSqlCandidate,
@@ -134,11 +214,27 @@ class CopilotService:
         selected_tables = self.schema_selector.select_tables(question)
         return self.schema_context_builder.build(table_names=selected_tables)
 
-    def _build_generation_prompt(self, question: str, schema_context: str) -> str:
+    def _build_generation_prompt(
+        self,
+        question: str,
+        schema_context: str,
+        matched_aliases: dict[str, str],
+    ) -> str:
+        alias_guidance = ""
+        if matched_aliases:
+            formatted_aliases = "\n".join(
+                f"- Treat '{source}' as the approved alias for '{target}'."
+                for source, target in sorted(matched_aliases.items())
+            )
+            alias_guidance = (
+                f"\nApproved aliases for this request:\n{formatted_aliases}\n"
+            )
+
         return (
             "Generate a SQL query for the user's question.\n\n"
             f"User question:\n{question}\n\n"
-            f"Schema context:\n{schema_context}\n\n"
+            f"Schema context:\n{schema_context}\n"
+            f"{alias_guidance}\n"
             "SQL capability rules:\n"
             "- Return only a SELECT query.\n"
             "- Use only the provided datasets and columns.\n"
@@ -147,7 +243,7 @@ class CopilotService:
             "- UNION and UNION ALL are allowed where needed.\n"
             "- GROUP BY and HAVING are allowed where needed.\n"
             "- Do not use INSERT, UPDATE, DELETE, CREATE, DROP, or other non-SELECT statements.\n"
-            "- Do not invent datasets, columns, or join keys.\n"
+            "- Do not invent datasets, columns, aliases, or join keys.\n"
             "- Prefer explicit table aliases and qualify columns in multi-table queries.\n"
             "- If two tables share a column name, qualify the column reference.\n"
             "- Avoid ORDER BY on select-list aliases; order by the underlying column or expression instead.\n"
@@ -161,7 +257,10 @@ class CopilotService:
         previous_candidate: CopilotSqlCandidate,
         validation: CopilotValidationResult,
     ) -> str:
-        error_lines = "\n".join(f"- {error}" for error in validation.errors) or "- Unknown validation error"
+        error_lines = (
+            "\n".join(f"- {error}" for error in validation.errors)
+            or "- Unknown validation error"
+        )
         lowered_errors = " ".join(validation.errors).lower()
 
         extra_guidance: list[str] = []
@@ -187,7 +286,9 @@ class CopilotService:
             )
 
         if not extra_guidance:
-            extra_guidance.append("- Fix the exact validation errors without changing the question being answered.")
+            extra_guidance.append(
+                "- Fix the exact validation errors without changing the question being answered."
+            )
 
         extra_guidance_text = "\n".join(extra_guidance)
 
@@ -203,7 +304,7 @@ class CopilotService:
             "- Use only the provided datasets and columns.\n"
             "- Multi-table queries are allowed when needed.\n"
             "- Qualify ambiguous columns with table names or aliases.\n"
-            "- Do not invent datasets, columns, or join keys.\n"
+            "- Do not invent datasets, columns, aliases, or join keys.\n"
             "- Avoid ORDER BY on select-list aliases; order by the underlying column or expression instead.\n"
             f"{extra_guidance_text}\n"
         )
