@@ -1,6 +1,7 @@
 services:
   - type: web
     name: infersql
+    branch: deploy/render-free-demo
     runtime: python
     plan: free
     buildCommand: bash deploy/build.sh
